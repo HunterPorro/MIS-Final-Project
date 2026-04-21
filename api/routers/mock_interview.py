@@ -5,8 +5,9 @@ from io import BytesIO
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from PIL import Image
 
+from api.ml.behavioral import analyze_behavioral
 from api.ml.technical_infer import LEVEL_LABELS, TechnicalAnalyzer, normalize_topic
-from api.schemas import MockInterviewResponse, TechnicalResult, WorkspaceResult
+from api.schemas import BehavioralResult, MockInterviewResponse, TechnicalResult, WorkspaceResult
 from api.services.fit import compute_fit
 from api.services.narrative import build_narrative, maybe_enrich_with_llm
 from api.services.runtime_models import get_asr, get_technical, get_workspace
@@ -70,6 +71,10 @@ async def mock_interview(
     if len(transcript.strip()) < 5:
         raise HTTPException(status_code=400, detail="Transcript too short—try a longer recording.")
 
+    audio_seconds = float(len(audio_arr) / sr) if sr > 0 else None
+    beh = analyze_behavioral(transcript, audio_seconds=audio_seconds)
+    beh_res = BehavioralResult(**beh.__dict__)
+
     # Workspace classification (optional)
     ws_label = "unknown"
     ws_conf = 0.5
@@ -117,6 +122,7 @@ async def mock_interview(
         transcript=transcript,
         workspace=w_res,
         technical=tech_res,
+        behavioral=beh_res,
         fit=fit,
         narrative=narrative,
     )

@@ -26,4 +26,14 @@ export type AssessResponse = {
 
 export type MockInterviewResponse = AssessResponse & {
   transcript: string;
+  behavioral: {
+    score: number;
+    star_coverage: Record<string, boolean>;
+    filler_words: Record<string, number>;
+    filler_total: number;
+    word_count: number;
+    speaking_rate_wpm: number | null;
+    has_numbers: boolean;
+    feedback: string[];
+  };
 };

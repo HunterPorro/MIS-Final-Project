@@ -26,6 +26,17 @@ class TechnicalResult(BaseModel):
     summary: str
 
 
+class BehavioralResult(BaseModel):
+    score: float
+    star_coverage: dict[str, bool]
+    filler_words: dict[str, int]
+    filler_total: int
+    word_count: int
+    speaking_rate_wpm: float | None = None
+    has_numbers: bool
+    feedback: list[str]
+
+
 class FitResult(BaseModel):
     fit_score: float
     environment_component: float
@@ -44,5 +55,6 @@ class MockInterviewResponse(BaseModel):
     transcript: str
     workspace: WorkspaceResult
     technical: TechnicalResult
+    behavioral: BehavioralResult
     fit: FitResult
     narrative: str

@@ -440,6 +440,75 @@ export function MockInterview() {
             </div>
           </div>
 
+          <div className="mt-8 rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Behavioral score</p>
+                <p className="mt-2 text-3xl font-semibold text-white">{result.behavioral.score}</p>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Words {result.behavioral.word_count}
+                  {result.behavioral.speaking_rate_wpm !== null
+                    ? ` · Pace ${Math.round(result.behavioral.speaking_rate_wpm)} wpm`
+                    : ""}
+                  {result.behavioral.has_numbers ? " · Quantified impact" : " · No numbers"}
+                  {` · Fillers ${result.behavioral.filler_total}`}
+                </p>
+              </div>
+              <div className="text-right text-xs text-zinc-500">
+                STAR coverage
+                <div className="mt-2 flex flex-wrap justify-end gap-2">
+                  {(["situation", "task", "action", "result"] as const).map((k) => (
+                    <span
+                      key={k}
+                      className={`rounded-full border px-3 py-1 ${
+                        result.behavioral.star_coverage[k]
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                          : "border-zinc-700 bg-zinc-900/30 text-zinc-400"
+                      }`}
+                    >
+                      {k.toUpperCase()}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-5 lg:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Coaching</p>
+                <ul className="mt-3 space-y-2 text-sm text-zinc-300">
+                  {result.behavioral.feedback.length ? (
+                    result.behavioral.feedback.map((s) => (
+                      <li key={s} className="flex gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" aria-hidden />
+                        {s}
+                      </li>
+                    ))
+                  ) : (
+                    <li className="text-zinc-500">No major behavioral flags.</li>
+                  )}
+                </ul>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Filler words</p>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-zinc-300 sm:grid-cols-3">
+                  {Object.entries(result.behavioral.filler_words)
+                    .filter(([, v]) => v > 0)
+                    .slice(0, 9)
+                    .map(([k, v]) => (
+                      <div key={k} className="rounded-xl border border-white/10 bg-zinc-900/30 px-3 py-2">
+                        <div className="text-xs text-zinc-500">{k}</div>
+                        <div className="mt-1 font-semibold tabular-nums text-white">{v}</div>
+                      </div>
+                    ))}
+                  {Object.values(result.behavioral.filler_words).every((v) => v === 0) && (
+                    <div className="text-zinc-500">No filler words detected.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Strengths</p>
