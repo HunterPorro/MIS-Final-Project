@@ -104,6 +104,9 @@ export function MockInterview() {
     if (question?.topicHint) setTopic(question.topicHint);
   }, [question?.topicHint]);
 
+  type RightTab = "prompt" | "report" | "transcript";
+  const [rightTab, setRightTab] = useState<RightTab>("prompt");
+
   // optional environment snapshot
   const videoRef = useRef<HTMLVideoElement>(null);
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
@@ -224,6 +227,7 @@ export function MockInterview() {
       if (!res.ok) throw new Error(await parseError(res));
       const data = (await res.json()) as MockInterviewResponse;
       setResult(data);
+      setRightTab("report");
       document.getElementById("report")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Request failed");
@@ -252,7 +256,7 @@ export function MockInterview() {
   }, [stopCamera, previewUrl]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 sm:px-6">
+    <div className="mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
         <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-black shadow-sm">
           <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
@@ -295,170 +299,208 @@ export function MockInterview() {
               </div>
             )}
           </div>
-
-          <div className="border-t border-white/5 bg-zinc-950/40 px-4 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-2">
-                {!recording ? (
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
-                    onClick={startRecording}
-                  >
-                    Start recording
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
-                    onClick={stopRecording}
-                  >
-                    Stop
-                  </button>
-                )}
-
-                {!camStream && (
-                  <button
-                    type="button"
-                    className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
-                    onClick={startCamera}
-                  >
-                    Camera
-                  </button>
-                )}
-                {camStream && (
-                  <>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
-                      onClick={captureFrame}
-                    >
-                      Capture frame
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
-                      onClick={stopCamera}
-                    >
-                      Stop camera
-                    </button>
-                  </>
-                )}
-
-                <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600">
-                  Upload frame
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (!f) return;
-                      setSnapshotFile(f);
-                      setPreviewUrl(URL.createObjectURL(f));
-                    }}
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
-                  onClick={reset}
-                >
-                  Reset
-                </button>
-              </div>
-
-              <button
-                type="button"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-200 disabled:opacity-50"
-                disabled={submitting || !audioBlob}
-                onClick={submit}
-                aria-busy={submitting}
-              >
-                {submitting ? (
-                  <>
-                    <Spinner />
-                    Analyzing
-                  </>
-                ) : (
-                  "Generate report"
-                )}
-              </button>
-            </div>
-
-            {error && (
-              <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">
-                {error}
-              </div>
-            )}
-          </div>
         </section>
 
         <aside className="rounded-2xl border border-zinc-800 bg-[#0F0F11] shadow-sm">
-          <div className="border-b border-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Prompt</p>
-            <div className="mt-3 grid gap-3">
-              <label className="text-xs font-medium text-zinc-400">
-                Question
-                <select
-                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
-                  value={questionId}
-                  onChange={(e) => setQuestionId(e.target.value)}
-                >
-                  {QUESTION_BANK.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      {q.track.toUpperCase()} · {q.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-medium text-zinc-400">
-                Topic
-                <select
-                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value as Topic)}
-                >
-                  <option>M&A</option>
-                  <option>LBO</option>
-                  <option>Valuation</option>
-                </select>
-              </label>
+          <div className="flex items-center justify-between gap-3 border-b border-white/5 p-3">
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                className={`meet-tab ${rightTab === "prompt" ? "meet-tab-active" : ""}`}
+                onClick={() => setRightTab("prompt")}
+              >
+                Prompt
+              </button>
+              <button
+                type="button"
+                className={`meet-tab ${rightTab === "report" ? "meet-tab-active" : ""}`}
+                onClick={() => setRightTab("report")}
+              >
+                Report
+              </button>
+              <button
+                type="button"
+                className={`meet-tab ${rightTab === "transcript" ? "meet-tab-active" : ""}`}
+                onClick={() => setRightTab("transcript")}
+              >
+                Transcript
+              </button>
             </div>
+            <div className="text-xs text-zinc-500">{result ? `Fit ${result.fit.fit_score}` : "No report"}</div>
           </div>
 
-          <div className="p-4">
-            <p className="text-sm font-semibold text-zinc-100">{question.title}</p>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{question.prompt}</p>
-          </div>
-
-          {result && (
-            <div className="border-t border-white/5 p-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Report</p>
-              <div className="mt-3 flex items-end justify-between gap-3">
-                <div>
-                  <div className="text-4xl font-semibold text-white">{result.fit.fit_score}</div>
-                  <div className="mt-1 text-xs text-zinc-500">
-                    Env {result.fit.environment_component} · Tech {result.fit.technical_component} · Beh{" "}
-                    {result.behavioral.score}
-                  </div>
-                </div>
+          {rightTab === "prompt" && (
+            <div className="p-4">
+              <div className="grid gap-3">
+                <label className="text-xs font-medium text-zinc-400">
+                  Question
+                  <select
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                    value={questionId}
+                    onChange={(e) => setQuestionId(e.target.value)}
+                  >
+                    {QUESTION_BANK.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.track.toUpperCase()} · {q.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs font-medium text-zinc-400">
+                  Topic
+                  <select
+                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value as Topic)}
+                  >
+                    <option>M&A</option>
+                    <option>LBO</option>
+                    <option>Valuation</option>
+                  </select>
+                </label>
               </div>
 
-              <div className="mt-4 grid gap-3">
-                <div className="rounded-xl border border-white/10 bg-black/40 p-3">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Narrative</div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/40 p-3">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Transcript</div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
-                </div>
+              <div className="mt-4">
+                <p className="text-sm font-semibold text-zinc-100">{question.title}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{question.prompt}</p>
               </div>
             </div>
           )}
+
+          {rightTab === "report" && (
+            <div className="p-4">
+              {!result ? (
+                <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-400">
+                  Record an answer, then generate a report.
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Summary</div>
+                    <div className="mt-2 text-4xl font-semibold text-white">{result.fit.fit_score}</div>
+                    <div className="mt-1 text-xs text-zinc-500">
+                      Env {result.fit.environment_component} · Tech {result.fit.technical_component} · Beh{" "}
+                      {result.behavioral.score}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                    <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Narrative</div>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {rightTab === "transcript" && (
+            <div className="p-4">
+              {!result ? (
+                <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-400">
+                  Transcript appears after you generate a report.
+                </div>
+              ) : (
+                <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Transcript</div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
+                </div>
+              )}
+            </div>
+          )}
         </aside>
+      </div>
+
+      <div className="meet-dock">
+        <div className="flex items-center gap-2">
+          {!recording ? (
+            <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} aria-label="Start recording">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
+              </svg>
+            </button>
+          ) : (
+            <button type="button" className="meet-btn meet-btn-danger" onClick={stopRecording} aria-label="Stop recording">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h12v12H6z" />
+              </svg>
+            </button>
+          )}
+
+          {!camStream ? (
+            <button type="button" className="meet-btn" onClick={startCamera} aria-label="Start camera">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14" />
+                <rect x="3" y="7" width="12" height="10" rx="2" ry="2" />
+              </svg>
+            </button>
+          ) : (
+            <button type="button" className="meet-btn" onClick={stopCamera} aria-label="Stop camera">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h12a2 2 0 012 2v6a2 2 0 01-2 2H3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
+              </svg>
+            </button>
+          )}
+
+          <label className="meet-btn cursor-pointer" aria-label="Upload environment frame">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l5-5 5 5" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14" />
+            </svg>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                setSnapshotFile(f);
+                setPreviewUrl(URL.createObjectURL(f));
+              }}
+            />
+          </label>
+
+          {camStream && (
+            <button type="button" className="meet-btn" onClick={captureFrame} aria-label="Capture environment frame">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h4l2-2h4l2 2h4v12H4z" />
+                <circle cx="12" cy="13" r="3.5" />
+              </svg>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="meet-btn meet-btn-primary"
+            disabled={submitting || !audioBlob}
+            onClick={submit}
+            aria-busy={submitting}
+            aria-label="Generate report"
+          >
+            {submitting ? (
+              <Spinner />
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12h12" />
+              </svg>
+            )}
+          </button>
+
+          <button type="button" className="meet-btn" onClick={reset} aria-label="Reset">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 101-4" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v6h6" />
+            </svg>
+          </button>
+        </div>
+        {error && (
+          <div className="mt-2 max-w-[420px] rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">
+            {error}
+          </div>
+        )}
       </div>
 
       {result && (

@@ -217,7 +217,7 @@ export function SessionInterview() {
   }, [reports]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
+    <div className="mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="mx-auto max-w-3xl text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Superday session</p>
         <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">3-question session</h2>
@@ -261,25 +261,9 @@ export function SessionInterview() {
                 <span className="tabular-nums">{formatTime(seconds)}</span>
                 {audioBlob ? <span className="text-emerald-400">Recorded</span> : <span className="text-zinc-500">Not recorded</span>}
               </div>
-              <div className="flex flex-wrap gap-2">
-                {!recording ? (
-                  <button type="button" className="ui-btn-primary w-auto px-4 py-2.5" onClick={startRecording} disabled={done}>
-                    Start
-                  </button>
-                ) : (
-                  <button type="button" className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100" onClick={stopRecording}>
-                    Stop
-                  </button>
-                )}
-                <button type="button" className="ui-btn-ghost py-2.5" onClick={reset}>
-                  Reset session
-                </button>
-              </div>
             </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <button type="button" className="ui-btn-primary w-auto px-5 py-2.5" onClick={submitAnswer} disabled={done || submitting || !audioBlob}>
-                {submitting ? "Analyzing…" : "Submit answer"}
-              </button>
+            <div className="mt-3 text-xs text-zinc-500">
+              Use the control dock below to record, submit, and move through the session.
             </div>
           </div>
         </div>
@@ -339,6 +323,56 @@ export function SessionInterview() {
           </div>
         </section>
       )}
+
+      <div className="meet-dock">
+        <div className="flex items-center gap-2">
+          {!recording ? (
+            <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} disabled={done} aria-label="Start recording">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
+              </svg>
+            </button>
+          ) : (
+            <button type="button" className="meet-btn meet-btn-danger" onClick={stopRecording} aria-label="Stop recording">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h12v12H6z" />
+              </svg>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className="meet-btn meet-btn-primary"
+            onClick={submitAnswer}
+            disabled={done || submitting || !audioBlob}
+            aria-busy={submitting}
+            aria-label="Submit answer"
+          >
+            {submitting ? (
+              <span className="text-xs font-semibold">…</span>
+            ) : (
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7" />
+              </svg>
+            )}
+          </button>
+
+          <button type="button" className="meet-btn" onClick={reset} aria-label="Reset session">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 101-4" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v6h6" />
+            </svg>
+          </button>
+        </div>
+        {error && (
+          <div className="mt-2 max-w-[420px] rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">
+            {error}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
