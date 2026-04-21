@@ -189,6 +189,10 @@ body {
     @apply transition duration-200 active:scale-[0.98];
   }
 
+  .cut-corner {
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  }
+
   .orb {
     @apply absolute rounded-full blur-2xl;
     background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.22), rgba(255,255,255,0) 60%),

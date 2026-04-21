@@ -53,7 +53,7 @@ export function InteractiveDemo() {
                   <div className="mt-0.5 text-xs text-zinc-500">Prompt · Record · Report</div>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-zinc-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden />
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--accent)" }} aria-hidden />
                   Connected
                 </div>
               </div>

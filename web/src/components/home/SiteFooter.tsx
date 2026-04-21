@@ -5,8 +5,27 @@ export function SiteFooter() {
         <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2 font-semibold text-white">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/5 text-sm font-bold text-white ring-1 ring-white/10">
-                FR
+              <span className="flex h-9 w-9 items-center justify-center">
+                {/* keep footer dependency-free from app shell; inline mark */}
+                <span
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 shadow-[0_18px_50px_-30px_rgba(0,0,0,0.85)]"
+                  style={{ boxShadow: "0 18px 50px -30px rgba(79, 70, 229, 0.55)" }}
+                  aria-hidden
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M6.5 7.2c0-1 0.8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v9.6c0 1-.8 1.8-1.8 1.8H8.3c-1 0-1.8-.8-1.8-1.8V7.2Z"
+                      stroke="rgba(255,255,255,0.75)"
+                      strokeWidth="1.4"
+                    />
+                    <path
+                      d="M9 9h6M9 12h4.8M9 15h5.4"
+                      stroke="rgba(96,165,250,0.85)"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </span>
               </span>
               Final Round
             </div>

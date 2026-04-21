@@ -50,7 +50,7 @@ export function HeroSection() {
             </div>
           </div>
 
-          <div className="frame-gradient">
+          <div className="frame-gradient cut-corner">
             <div className="overflow-hidden rounded-2xl bg-black shadow-[0_18px_50px_-35px_rgba(0,0,0,0.85)]">
               <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
                 <div className="min-w-0">
