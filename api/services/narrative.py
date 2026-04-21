@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from api.schemas import FitResult, TechnicalResult, WorkspaceResult
+from api.schemas import BehavioralResult, FitResult, TechnicalResult, WorkspaceResult
 
 
 def build_narrative(
     workspace: WorkspaceResult,
     technical: TechnicalResult,
     fit: FitResult,
+    behavioral: BehavioralResult | None = None,
 ) -> str:
     env_note = (
         "Environment reads as firm-ready for virtual interviews."
@@ -23,9 +24,16 @@ def build_narrative(
         if technical.skills_identified
         else "limited explicit markers—consider adding structured technical anchors."
     )
+    beh_note = ""
+    if behavioral is not None:
+        beh_note = (
+            f" Delivery: {behavioral.score:.0f}/100 behavioral. "
+            + ("Quantified impact present. " if behavioral.has_numbers else "Add one quantified outcome. ")
+            + ("STAR structure present. " if sum(1 for v in behavioral.star_coverage.values() if v) >= 3 else "Use STAR structure. ")
+        )
     return (
         f"Readiness snapshot — Fit {fit.fit_score:.0f}/100 (env {fit.environment_component:.0f}, "
-        f"technical {fit.technical_component:.0f}). {env_note} "
+        f"technical {fit.technical_component:.0f}).{beh_note} {env_note} "
         f"Technical stance: {technical.expertise_label} on {technical.topic}. "
         f"Observed strengths: {strengths}. "
         f"Concepts to reinforce next: {gaps}. "

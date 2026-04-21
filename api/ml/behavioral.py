@@ -34,7 +34,7 @@ def _count_words(text: str) -> int:
 
 def _count_phrase(text: str, phrase: str) -> int:
     # count phrase occurrences as whole-word-ish
-    return len(re.findall(rf"(?i)\\b{re.escape(phrase)}\\b", text))
+    return len(re.findall(rf"(?i)\b{re.escape(phrase)}\b", text))
 
 
 def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> BehavioralResult:
@@ -42,52 +42,78 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
     low = t.lower()
     wc = _count_words(t)
 
-    # STAR heuristics
+    # STAR heuristics (HireVue-style: look for narrative structure)
+    situation_re = r"(?i)\b(situation|context|background|when i|at the time|during my|in my role at)\b"
+    task_re = r"(?i)\b(task|goal|responsib|objective|needed to|asked to|my role was to|i was tasked)\b"
+    action_re = (
+        r"(?i)\b(i\s+(led|built|created|drove|owned|managed|analyz(?:ed|e)|modeled|implemented|designed|"
+        r"partnered|coordinated|synthesized|negotiated|prioritized|executed))\b"
+    )
+    result_re = r"(?i)\b(result|impact|outcome|achieved|increased|decreased|improved|delivered|reduced|grew|saved|won)\b"
+    has_outcome_number = bool(re.search(r"\b\d+(?:\.\d+)?\s*(?:%|percent|bps)?\b", t, flags=re.IGNORECASE)) and bool(
+        re.search(result_re, t)
+    )
+
     star = {
-        "situation": bool(re.search(r"(?i)\\b(situation|context|when i|at the time)\\b", t)),
-        "task": bool(re.search(r"(?i)\\b(task|goal|responsib|objective|needed to)\\b", t)),
-        "action": bool(re.search(r"(?i)\\b(i did|i led|i built|i created|i decided|i analyzed|i implemented)\\b", t)),
-        "result": bool(re.search(r"(?i)\\b(result|impact|outcome|achieved|increased|decreased|improved|delivered)\\b", t)),
+        "situation": bool(re.search(situation_re, t)),
+        "task": bool(re.search(task_re, t)),
+        "action": bool(re.search(action_re, t)),
+        "result": bool(re.search(result_re, t)) or has_outcome_number,
     }
     star_hits = sum(1 for v in star.values() if v)
 
     # Quantification heuristic
-    has_numbers = bool(re.search(r"\\b\\d+(?:\\.\\d+)?%?\\b", t))
+    has_numbers = bool(
+        re.search(r"\b\d+(?:\.\d+)?\s*(?:%|percent|bps)?\b", t, flags=re.IGNORECASE)
+        or re.search(r"(?i)(\$\s*\d+|\d+\s*(?:mm|bn)\b)", t)
+    )
+    has_time_or_scale = bool(re.search(r"(?i)\\b(week|month|quarter|year|hrs?|days?)\\b", t)) or bool(
+        re.search(r"(?i)\\b(\\$|usd|mm|bn|bps|points)\\b", t)
+    )
 
     # Fillers
     filler_counts = {w: _count_phrase(low, w) for w in FILLER_WORDS}
     filler_total = sum(filler_counts.values())
+    filler_per_100 = (filler_total / wc) * 100.0 if wc > 0 else 0.0
 
     # Speaking rate
     wpm: float | None = None
     if audio_seconds and audio_seconds > 0:
         wpm = (wc / audio_seconds) * 60.0
+        # Guardrails: short clips / mismatched transcript produce nonsense rates.
+        if audio_seconds < 12 or wpm > 260 or wpm < 60:
+            wpm = None
 
     feedback: list[str] = []
-    if wc < 40:
-        feedback.append("Answer is very short—add more context and a clear outcome.")
+    if wc < 55:
+        feedback.append("Add detail: one concrete example + a clear closing outcome.")
     if star_hits < 3:
-        feedback.append("Use STAR: set context, define the task, describe actions, then state results.")
+        feedback.append("Structure with STAR: context → task → actions → measurable result.")
     if not has_numbers:
-        feedback.append("Add at least one quantified outcome (%, $, time saved, rank, volume).")
-    if filler_total >= 8:
-        feedback.append("Reduce filler words (um/like/you know). Pause instead of filling silence.")
+        feedback.append("Add one metric (%, $, bps, time, volume) to make impact credible.")
+    elif has_numbers and not has_outcome_number:
+        feedback.append("Tie numbers to outcomes (what changed and why it mattered).")
+    if filler_per_100 >= 6.0:
+        feedback.append("Reduce filler words; use short pauses instead.")
     if wpm is not None:
-        if wpm < 110:
-            feedback.append("Pace is slow—aim for clearer, slightly faster delivery.")
-        elif wpm > 180:
+        if wpm < 120:
+            feedback.append("Pace is slow—tighten phrasing and land key points faster.")
+        elif wpm > 185:
             feedback.append("Pace is fast—slow down slightly for clarity.")
+    if not has_time_or_scale:
+        feedback.append("Add timeframe or scale (e.g., 2 weeks, 3-month project, $ volume).")
 
     # Score (simple, transparent)
     score = 0.0
-    score += min(40.0, (star_hits / 4.0) * 40.0)
-    score += 20.0 if has_numbers else 8.0
+    score += min(42.0, (star_hits / 4.0) * 42.0)
+    score += 22.0 if (has_numbers and has_outcome_number) else 16.0 if has_numbers else 8.0
     if wpm is None:
-        score += 15.0
+        score += 12.0
     else:
-        score += 15.0 if 120 <= wpm <= 175 else 8.0
-    score += 25.0 if wc >= 90 else 15.0 if wc >= 60 else 8.0
-    score -= min(20.0, filler_total * 1.5)
+        score += 12.0 if 125 <= wpm <= 175 else 7.0
+    score += 24.0 if wc >= 110 else 18.0 if wc >= 85 else 12.0 if wc >= 60 else 7.0
+    score += 6.0 if has_time_or_scale else 2.0
+    score -= min(18.0, filler_per_100 * 1.6)
     score = max(0.0, min(100.0, round(score, 1)))
 
     return BehavioralResult(

@@ -76,7 +76,8 @@ async def mock_interview(
     if len(transcript.strip()) < 5:
         raise HTTPException(status_code=400, detail="Transcript too short—try a longer recording.")
 
-    audio_seconds = float(len(audio_arr) / sr) if sr > 0 else None
+    # If transcript_override is used, audio duration is not meaningful for behavioral pace.
+    audio_seconds = None if transcript_override else (float(len(audio_arr) / sr) if sr > 0 else None)
     beh = analyze_behavioral(transcript, audio_seconds=audio_seconds)
     beh_res = BehavioralResult(**beh.__dict__)
 
@@ -120,7 +121,7 @@ async def mock_interview(
     )
 
     fit = compute_fit(prof_prob, level)
-    narrative = build_narrative(w_res, tech_res, fit)
+    narrative = build_narrative(w_res, tech_res, fit, behavioral=beh_res)
     narrative = await maybe_enrich_with_llm(narrative)
 
     return MockInterviewResponse(
