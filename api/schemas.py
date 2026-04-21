@@ -52,6 +52,8 @@ class AssessResponse(BaseModel):
 
 
 class MockInterviewResponse(BaseModel):
+    question_id: str | None = None
+    question_track: str | None = None
     transcript: str
     workspace: WorkspaceResult
     technical: TechnicalResult

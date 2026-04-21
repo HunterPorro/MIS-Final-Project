@@ -25,6 +25,8 @@ export type AssessResponse = {
 };
 
 export type MockInterviewResponse = AssessResponse & {
+  question_id?: string | null;
+  question_track?: string | null;
   transcript: string;
   behavioral: {
     score: number;

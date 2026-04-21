@@ -216,6 +216,8 @@ export function MockInterview() {
       const wav = await blobWebmToWav(audioBlob);
       const fd = new FormData();
       fd.append("topic", topic);
+      fd.append("question_id", question.id);
+      fd.append("question_track", question.track);
       fd.append("audio_wav", new File([wav], "answer.wav", { type: "audio/wav" }));
       if (snapshotFile) fd.append("image", snapshotFile);
       const res = await fetch(apiUrl("/mock-interview"), { method: "POST", body: fd });

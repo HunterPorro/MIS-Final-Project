@@ -33,6 +33,8 @@ def _professional_prob(classifier_labels: list[str], label: str, confidence: flo
 @router.post("/mock-interview", response_model=MockInterviewResponse)
 async def mock_interview(
     topic: str = Form(...),
+    question_id: str | None = Form(default=None),
+    question_track: str | None = Form(default=None),
     audio_wav: UploadFile = File(...),
     image: UploadFile | None = File(default=None),
 ):
@@ -119,6 +121,8 @@ async def mock_interview(
     narrative = await maybe_enrich_with_llm(narrative)
 
     return MockInterviewResponse(
+        question_id=question_id,
+        question_track=question_track,
         transcript=transcript,
         workspace=w_res,
         technical=tech_res,

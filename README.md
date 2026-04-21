@@ -1,13 +1,20 @@
-# Final Round — full-stack readiness prototype
+# Final Round — HireVue-style mock interview + Superday report
 
-End-to-end demo that scores a **webcam still** with a proprietary **ResNet18** workspace classifier (ImageNet transfer by default) and scores a **written finance answer** with a fine-tuned **DistilBERT** model, then fuses both into a **Fit Score** with a coaching narrative (optional OpenAI polish).
+End-to-end demo that runs a **one-shot mock interview**:
+
+- **Audio (WAV)** → local ASR (Whisper tiny) transcript
+- **Transcript** → technical semantic analysis + behavioral coaching
+- **Optional webcam still** → proprietary workspace classifier
+- Everything fuses into a **Fit Score** + narrative report (optional OpenAI polish)
+
+The web UI supports both **single-question** analysis and a short **multi-question Superday session** with an aggregated report.
 
 ## Repository layout
 
-- `api/` — FastAPI service (`POST /assess`, `GET /health`)
+- `api/` — FastAPI service (`POST /mock-interview`, `GET /health`; legacy `POST /assess`)
 - `training/` — dataset builders + training scripts for both models
 - `models/` — generated checkpoints (gitignored except `.gitkeep`)
-- `web/` — Next.js UI (camera capture, upload, results)
+- `web/` — Next.js UI (record answer → generate report; Superday session)
 - `docker-compose.yml` — optional API + dev UI
 
 ## Quick start (local)
