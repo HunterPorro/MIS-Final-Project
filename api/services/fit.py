@@ -7,6 +7,7 @@ def compute_fit(
     professional_probability: float,
     expertise_level: int,
     behavioral_score: float | None = None,
+    transcript_word_count: int | None = None,
     w_env: float = 0.35,
     w_tech: float = 0.65,
     w_beh: float = 0.0,
@@ -18,6 +19,18 @@ def compute_fit(
     env_component = round(100.0 * professional_probability, 1)
     tech_component = round((expertise_level / 3.0) * 100.0, 1) if expertise_level >= 0 else 0.0
     beh_component = float(behavioral_score) if behavioral_score is not None else None
+
+    # Guardrails: very short transcripts are noisy. Smooth tech/behavioral toward a neutral baseline
+    # and reduce behavioral weight so Fit doesn't swing wildly.
+    wc = transcript_word_count or 0
+    if wc > 0:
+        tech_r = min(1.0, wc / 55.0)  # tech stabilizes quickly
+        beh_r = min(1.0, wc / 85.0)  # behavioral needs more context
+        baseline = 50.0
+        tech_component = round(baseline + (tech_component - baseline) * tech_r, 1)
+        if beh_component is not None:
+            beh_component = round(baseline + (beh_component - baseline) * beh_r, 1)
+            w_beh = w_beh * beh_r
 
     # If behavioral is provided, fold it into the final Fit Score while keeping the same response shape
     # (env_component + technical_component remain comparable across versions).

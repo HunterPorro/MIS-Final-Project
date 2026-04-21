@@ -119,6 +119,7 @@ export function SessionInterview() {
   const rafRef = useRef<number | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1
   const [noInputStreakMs, setNoInputStreakMs] = useState(0);
+  const [inputDetectedStreakMs, setInputDetectedStreakMs] = useState(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,6 +184,7 @@ export function SessionInterview() {
         const level = Math.min(1, rms * 3.2);
         setMicLevel(level);
         setNoInputStreakMs((ms) => (level < 0.02 ? Math.min(5000, ms + 16) : 0));
+        setInputDetectedStreakMs((ms) => (level >= 0.02 ? Math.min(5000, ms + 16) : 0));
         rafRef.current = window.requestAnimationFrame(loop);
       };
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
@@ -207,6 +209,7 @@ export function SessionInterview() {
     setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
     setMicLevel(0);
     setNoInputStreakMs(0);
+    setInputDetectedStreakMs(0);
     if (rafRef.current) {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -343,6 +346,7 @@ export function SessionInterview() {
                   <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
                 </span>
                 {audioBlob ? <span className="text-zinc-100">Recorded</span> : <span className="text-zinc-500">Not recorded</span>}
+                {recording && inputDetectedStreakMs >= 600 && noInputStreakMs === 0 && <span className="text-emerald-200/90">Input</span>}
                 {recording && noInputStreakMs >= 1500 && <span className="text-amber-200/90">No input</span>}
               </div>
             </div>

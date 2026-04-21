@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
+import time
 from io import BytesIO
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image
 
 from api.schemas import AssessResponse, TechnicalResult, WorkspaceResult
@@ -11,7 +13,8 @@ from api.services.narrative import build_narrative, maybe_enrich_with_llm
 from api.services.runtime_models import get_technical, get_workspace
 from api.ml.technical_infer import LEVEL_LABELS, normalize_topic, TechnicalAnalyzer
 
-router = APIRouter()
+router = APIRouter(tags=["assess"])
+logger = logging.getLogger("final-round-api.assess")
 
 # ~8 MiB — enough for high-res webcam JPEGs without accepting huge uploads
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -32,10 +35,12 @@ def _professional_prob(classifier_labels: list[str], label: str, confidence: flo
 
 @router.post("/assess", response_model=AssessResponse)
 async def assess(
+    request: Request,
     topic: str = Form(...),
     answer_text: str = Form(...),
     image: UploadFile = File(...),
 ):
+    t0 = time.perf_counter()
     if len(answer_text.strip()) < 10:
         raise HTTPException(status_code=400, detail="answer_text too short")
     if len(answer_text) > MAX_ANSWER_CHARS:
@@ -67,14 +72,31 @@ async def assess(
         raise HTTPException(status_code=400, detail=f"Invalid image: {e}") from e
 
     t_norm = normalize_topic(topic)
+    t_ws0 = time.perf_counter()
     label, conf, idx = ws.predict_pil(pil)
     prof_prob = _professional_prob(ws.classes, label, conf, idx)
 
     w_res = WorkspaceResult(label=label, confidence=conf, class_index=idx)
 
+    logger.info(
+        {
+            "request_id": getattr(request.state, "request_id", None),
+            "event": "workspace_done",
+            "ms": round((time.perf_counter() - t_ws0) * 1000, 1),
+        }
+    )
+
+    t_tech0 = time.perf_counter()
     level, level_conf, _probs = tech.predict(t_norm, answer_text)
     skills, missed, coverage, explained, cov_score = TechnicalAnalyzer.lexicon_scan(t_norm, answer_text)
     summ = TechnicalAnalyzer.short_summary(level, t_norm, skills)
+    logger.info(
+        {
+            "request_id": getattr(request.state, "request_id", None),
+            "event": "technical_done",
+            "ms": round((time.perf_counter() - t_tech0) * 1000, 1),
+        }
+    )
 
     tech_res = TechnicalResult(
         expertise_level=level,
@@ -93,4 +115,11 @@ async def assess(
     text = build_narrative(w_res, tech_res, fit)
     text = await maybe_enrich_with_llm(text)
 
+    logger.info(
+        {
+            "request_id": getattr(request.state, "request_id", None),
+            "event": "assess_done",
+            "ms": round((time.perf_counter() - t0) * 1000, 1),
+        }
+    )
     return AssessResponse(workspace=w_res, technical=tech_res, fit=fit, narrative=text)

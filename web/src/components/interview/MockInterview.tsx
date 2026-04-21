@@ -125,6 +125,7 @@ export function MockInterview() {
   const rafRef = useRef<number | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1
   const [noInputStreakMs, setNoInputStreakMs] = useState(0);
+  const [inputDetectedStreakMs, setInputDetectedStreakMs] = useState(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -248,6 +249,7 @@ export function MockInterview() {
         const level = Math.min(1, rms * 3.2);
         setMicLevel(level);
         setNoInputStreakMs((ms) => (level < 0.02 ? Math.min(5000, ms + 16) : 0));
+        setInputDetectedStreakMs((ms) => (level >= 0.02 ? Math.min(5000, ms + 16) : 0));
         rafRef.current = window.requestAnimationFrame(loop);
       };
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
@@ -272,6 +274,7 @@ export function MockInterview() {
     setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
     setMicLevel(0);
     setNoInputStreakMs(0);
+    setInputDetectedStreakMs(0);
     if (rafRef.current) {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -436,6 +439,7 @@ export function MockInterview() {
                   <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
                 </span>
               </span>
+              {recording && inputDetectedStreakMs >= 600 && noInputStreakMs === 0 && <span className="meet-chip">Input detected</span>}
               {recording && noInputStreakMs >= 1500 && <span className="meet-chip">No input detected</span>}
               <span className="meet-chip">{question.track.toUpperCase()}</span>
               <span className="meet-chip">Suggested {formatTime(question.suggestedSeconds)}</span>
@@ -459,6 +463,22 @@ export function MockInterview() {
                 </div>
               </div>
             )}
+
+                {!camStream && (
+                  <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2 text-xs text-zinc-200 backdrop-blur">
+                    <span className="text-zinc-300">
+                      <span className="font-semibold text-zinc-100">Tip:</span> camera is optional — but capture/upload a
+                      frame for environment scoring.
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded-full bg-white px-3 py-1 font-semibold text-zinc-900 hover:bg-zinc-200"
+                      onClick={startCamera}
+                    >
+                      Turn on camera
+                    </button>
+                  </div>
+                )}
 
             {audioBlob && !recording && (
               <div
