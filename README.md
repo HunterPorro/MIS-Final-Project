@@ -119,6 +119,29 @@ Observability:
 - `/health` reports checkpoint presence plus runtime model load state + timestamps.
 - Responses include `X-Request-Id`; the API logs timing events per request (`asr_done`, `technical_done`, etc.).
 
+### Verify pipeline (CNN + NLP + ASR + behavioral)
+
+The interview stack uses:
+
+- **Workspace CNN**: ResNet18 image classifier on an optional webcam still.
+- **Technical NLP**: DistilBERT **sequence classifier** (token embeddings are internal to the transformer; there is no separate “embedding endpoint”).
+- **ASR**: Whisper tiny via Hugging Face `transformers` pipeline.
+- **Behavioral**: STAR/rubric heuristics on the transcript.
+
+Run automated checks (unit tests + ML smoke + Next.js build):
+
+```bash
+npm run test:smoke
+```
+
+Optional: also load Whisper ASR (slow; may download weights):
+
+```bash
+SMOKE_TEST_ASR=1 python -m unittest api.tests.test_pipeline_smoke -v
+```
+
+Local manual UI: `npm run dev`, open `/interview`, allow mic/camera, record, then **Generate**. Ensure Vercel env `NEXT_PUBLIC_USE_PROXY=1` and `BACKEND_URL` points at your hosted API.
+
 ### Optional: narrative polish
 
 Set `OPENAI_API_KEY` in the API environment (same shell as `uvicorn`) to rewrite the narrative with `gpt-4o-mini`. Without it, the API uses the template narrative.

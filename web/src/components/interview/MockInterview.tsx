@@ -82,6 +82,24 @@ async function blobWebmToWav(webm: Blob): Promise<Blob> {
   return wav;
 }
 
+function waitForVideoDimensions(video: HTMLVideoElement, timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const tick = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        resolve(false);
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+}
+
 async function parseError(res: Response): Promise<string> {
   const t = await res.text();
   if (t.includes("Vercel Security Checkpoint") || t.includes("vercel.link/security-checkpoint")) {
@@ -190,12 +208,17 @@ export function MockInterview() {
     }
   };
 
-  const captureFrame = () => {
+  const captureFrame = async () => {
     const video = videoRef.current;
     if (!video) return;
+    const ready = await waitForVideoDimensions(video, 8000);
+    if (!ready) {
+      setError("Camera preview is not ready yet. Wait a moment after turning the camera on, then try Capture again.");
+      return;
+    }
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
@@ -461,7 +484,7 @@ export function MockInterview() {
 
           <div className="relative aspect-video w-full bg-zinc-950">
             {camStream ? (
-              <video ref={videoRefCb} className="h-full w-full object-cover" playsInline muted />
+              <video ref={videoRefCb} className="h-full w-full object-cover" playsInline muted autoPlay />
             ) : previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="Environment preview" className="h-full w-full object-cover" />

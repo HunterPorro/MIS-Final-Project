@@ -41,18 +41,31 @@ app.include_router(mock_interview.router, prefix="")
 
 @app.get("/health")
 def health():
-    from pathlib import Path
-
+    from api.ml.asr import DEFAULT_ASR_MODEL
     from api.services.runtime_models import model_status, technical_path, workspace_path
+
+    ws_ok = workspace_path().is_file()
+    tech_ok = (technical_path() / "config.json").is_file()
 
     return {
         "ok": True,
         "service": "final-round-api",
         "version": "1.0.0",
-        "workspace_ckpt": workspace_path().is_file(),
-        "technical_model": (technical_path() / "config.json").is_file(),
+        "workspace_ckpt": ws_ok,
+        "technical_model": tech_ok,
         "models": model_status(),
         "env": settings.environment,
+        # What each stage uses (no separate “embedding API”: DistilBERT uses token embeddings internally)
+        "pipeline": {
+            "workspace": "ResNet18 CNN (image → professional vs unprofessional workspace)",
+            "technical_nlp": "DistilBERT sequence classifier (topic-prefixed text → expertise level 0–3)",
+            "asr": f"Transformers ASR pipeline ({DEFAULT_ASR_MODEL})",
+            "behavioral": "Rule-based STAR/rubric scoring on transcript",
+        },
+        "artifacts": {
+            "workspace_checkpoint": str(workspace_path()) if ws_ok else None,
+            "technical_model_dir": str(technical_path()) if tech_ok else None,
+        },
     }
 
 

@@ -5,6 +5,9 @@ from dataclasses import dataclass
 import numpy as np
 from transformers import pipeline
 
+# Default Whisper checkpoint used by `ASRTranscriber` (first run may download weights).
+DEFAULT_ASR_MODEL = "openai/whisper-tiny"
+
 
 @dataclass(frozen=True)
 class TranscriptResult:
@@ -18,7 +21,7 @@ class ASRTranscriber:
     Note: the first run will download weights from Hugging Face.
     """
 
-    def __init__(self, model_name: str = "openai/whisper-tiny") -> None:
+    def __init__(self, model_name: str = DEFAULT_ASR_MODEL) -> None:
         self.model_name = model_name
         self._pipe = pipeline(
             task="automatic-speech-recognition",
