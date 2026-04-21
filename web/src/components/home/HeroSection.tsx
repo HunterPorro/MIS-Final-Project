@@ -10,27 +10,25 @@ export function HeroSection() {
             MIS Capstone Prototype
           </p>
           <h1 className="mt-8 text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl">
-            Hire-ready{" "}
-            <span className="text-zinc-500">
-              interview feedback.
-            </span>
+            Practice interviews.{" "}
+            <span className="text-zinc-500">Get structured feedback.</span>
           </h1>
           <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-zinc-400 sm:text-xl">
-            One snapshot of your setup plus a technical finance answer. Our workspace CNN and language
-            model produce a Fit Score and coaching narrative in seconds.
+            Record an answer to a real prompt. We transcribe, score technical depth + delivery, and generate
+            a concise coaching report you can iterate on.
           </p>
           <div className="mt-12 flex flex-col items-center justify-center gap-4 sm:flex-row">
             <a
-              href="#assessment"
+              href="/interview"
               className="inline-flex w-full items-center justify-center rounded-lg bg-white px-8 py-4 text-sm font-semibold tracking-wide text-black transition hover:bg-zinc-200 sm:w-auto"
             >
-              Run readiness check
+              Start mock interview
             </a>
             <a
-              href="#how-it-works"
+              href="/superday"
               className="inline-flex w-full items-center justify-center rounded-lg border border-zinc-800 bg-transparent px-8 py-4 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white sm:w-auto"
             >
-              How it works
+              Run Superday session
             </a>
           </div>
         </div>

@@ -4,10 +4,9 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const nav = [
-  { href: "#overview", label: "Overview" },
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#tips", label: "Tips" },
-  { href: "#assessment", label: "Assessment" },
+  { href: "/", label: "Home" },
+  { href: "/interview", label: "Mock interview" },
+  { href: "/superday", label: "Superday session" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -33,13 +32,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative flex min-h-screen flex-col">
-      <a
-        href="#assessment"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-emerald-600 focus:px-4 focus:py-2 focus:text-emerald-950"
-      >
-        Skip to assessment
-      </a>
-
       <header className="sticky top-0 z-50 border-b border-white/5 bg-zinc-950/80 backdrop-blur-xl print:hidden">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight text-white">
@@ -51,23 +43,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
           <nav className="hidden md:flex md:items-center md:gap-1">
             {nav.map((item) => (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 className="rounded-lg px-3 py-2 text-sm text-zinc-400 transition hover:bg-white/5 hover:text-white"
               >
                 {item.label}
-              </a>
+              </Link>
             ))}
           </nav>
 
           <div className="flex items-center gap-2">
-            <a
-              href="#assessment"
-              className="hidden rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 shadow-md shadow-emerald-900/30 transition hover:bg-emerald-400 sm:inline-flex"
+            <Link
+              href="/interview"
+              className="hidden rounded-full bg-white px-4 py-2 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-200 sm:inline-flex"
             >
-              Start
-            </a>
+              Join interview
+            </Link>
             <button
               type="button"
               className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-700 text-zinc-300 md:hidden"
@@ -91,22 +83,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div id="mobile-nav" className="border-t border-white/5 bg-zinc-950 px-4 py-4 md:hidden">
             <nav className="flex flex-col gap-1">
               {nav.map((item) => (
-                <a
+              <Link
                   key={item.href}
                   href={item.href}
                   className="rounded-lg px-3 py-3 text-zinc-200 hover:bg-white/5"
                   onClick={() => setMenuOpen(false)}
                 >
                   {item.label}
-                </a>
+              </Link>
               ))}
-              <a
-                href="#assessment"
-                className="mt-2 rounded-full bg-emerald-500 px-4 py-3 text-center text-sm font-semibold text-emerald-950"
-                onClick={() => setMenuOpen(false)}
-              >
-                Start assessment
-              </a>
+            <Link
+              href="/interview"
+              className="mt-2 rounded-full bg-white px-4 py-3 text-center text-sm font-semibold text-zinc-900"
+              onClick={() => setMenuOpen(false)}
+            >
+              Join interview
+            </Link>
             </nav>
           </div>
         )}

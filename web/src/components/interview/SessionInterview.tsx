@@ -219,10 +219,10 @@ export function SessionInterview() {
   return (
     <div className="mx-auto max-w-6xl px-4">
       <div className="mx-auto max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400/90">Superday session</p>
-        <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">3-question mock interview</h2>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Superday session</p>
+        <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">3-question session</h2>
         <p className="mt-4 text-sm leading-relaxed text-zinc-400 sm:text-base">
-          Run a short session and get an aggregated report across behavioral + technical performance.
+          Run a short session and get a single aggregated report at the end.
         </p>
       </div>
 

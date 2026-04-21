@@ -35,6 +35,7 @@ async def mock_interview(
     topic: str = Form(...),
     question_id: str | None = Form(default=None),
     question_track: str | None = Form(default=None),
+    transcript_override: str | None = Form(default=None),
     audio_wav: UploadFile = File(...),
     image: UploadFile | None = File(default=None),
 ):
@@ -67,9 +68,11 @@ async def mock_interview(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid WAV audio: {e}") from e
 
-    # Transcribe
-    tr = asr.transcribe(audio_arr, sr)
-    transcript = tr.text
+    # Transcribe (or accept explicit transcript for deterministic testing)
+    transcript = (transcript_override or "").strip()
+    if not transcript:
+        tr = asr.transcribe(audio_arr, sr)
+        transcript = tr.text
     if len(transcript.strip()) < 5:
         raise HTTPException(status_code=400, detail="Transcript too short—try a longer recording.")
 

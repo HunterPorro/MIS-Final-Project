@@ -252,95 +252,126 @@ export function MockInterview() {
   }, [stopCamera, previewUrl]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4">
-      <div className="mx-auto max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-400/90">Superday mock interview</p>
-        <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-          One-take. Transcribed. Scored.
-        </h2>
-        <p className="mt-4 text-sm leading-relaxed text-zinc-400 sm:text-base">
-          Pick a prompt, record your answer, and get a full report in one pass—like HireVue, but tailored for finance prep.
-        </p>
-      </div>
-
-      <div className="mt-12 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-        <section className="ui-card ui-card-hover p-6 sm:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-6xl px-4 sm:px-6">
+      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+        <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-black shadow-sm">
+          <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Prompt</p>
-              <h3 className="mt-2 text-xl font-semibold text-white">{question.title}</h3>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{question.prompt}</p>
+              <p className="truncate text-sm font-semibold text-zinc-100">{question.title}</p>
+              <p className="mt-0.5 truncate text-xs text-zinc-500">
+                {question.track.toUpperCase()} · Suggested {formatTime(question.suggestedSeconds)}
+              </p>
             </div>
-            <div className="shrink-0 text-right text-xs text-zinc-500">
-              Suggested time
-              <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-200">
-                {formatTime(question.suggestedSeconds)}
-              </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`}
+                aria-hidden
+              />
+              <span className="text-xs tabular-nums text-zinc-400">{formatTime(seconds)}</span>
             </div>
           </div>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <label className="ui-label">
-              Question
-              <select className="ui-input" value={questionId} onChange={(e) => setQuestionId(e.target.value)}>
-                {QUESTION_BANK.map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.track.toUpperCase()} · {q.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="ui-label">
-              Topic
-              <select className="ui-input" value={topic} onChange={(e) => setTopic(e.target.value as Topic)}>
-                <option>M&A</option>
-                <option>LBO</option>
-                <option>Valuation</option>
-              </select>
-              <span className="mt-2 block text-xs text-zinc-500">
-                For behavioral prompts, this is used only for consistent scoring labels.
-              </span>
-            </label>
+          <div className="relative aspect-video w-full bg-zinc-950">
+            {camStream ? (
+              <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
+            ) : previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt="Environment preview" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <div className="text-center">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 text-xl font-semibold text-zinc-200">
+                    FR
+                  </div>
+                  <div className="mt-3 text-sm text-zinc-400">Camera off</div>
+                  <div className="mt-1 text-xs text-zinc-600">You can still record audio and generate a report.</div>
+                </div>
+              </div>
+            )}
+
+            {audioBlob && !recording && (
+              <div className="absolute left-3 top-3 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                Recorded
+              </div>
+            )}
           </div>
 
-          <div className="mt-8 rounded-3xl border border-white/10 bg-zinc-950/40 p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`}
-                  aria-hidden
-                />
-                <span className="text-sm font-medium text-zinc-300">Recording</span>
-                <span className="text-sm tabular-nums text-zinc-500">{formatTime(seconds)}</span>
-                {audioBlob ? <span className="text-sm text-emerald-400">Recorded</span> : null}
-              </div>
+          <div className="border-t border-white/5 bg-zinc-950/40 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-2">
                 {!recording ? (
-                  <button type="button" className="ui-btn-primary w-auto px-5 py-3" onClick={startRecording}>
-                    Start
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
+                    onClick={startRecording}
+                  >
+                    Start recording
                   </button>
                 ) : (
                   <button
                     type="button"
-                    className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                    className="inline-flex items-center justify-center rounded-full bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-200"
                     onClick={stopRecording}
                   >
                     Stop
                   </button>
                 )}
-                <button type="button" className="ui-btn-ghost py-3" onClick={reset}>
+
+                {!camStream && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
+                    onClick={startCamera}
+                  >
+                    Camera
+                  </button>
+                )}
+                {camStream && (
+                  <>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
+                      onClick={captureFrame}
+                    >
+                      Capture frame
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
+                      onClick={stopCamera}
+                    >
+                      Stop camera
+                    </button>
+                  </>
+                )}
+
+                <label className="inline-flex cursor-pointer items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600">
+                  Upload frame
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setSnapshotFile(f);
+                      setPreviewUrl(URL.createObjectURL(f));
+                    }}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-full border border-zinc-800 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-600"
+                  onClick={reset}
+                >
                   Reset
                 </button>
               </div>
-            </div>
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs leading-relaxed text-zinc-500">
-                Press Start, answer in one take, then Stop. We transcribe and score automatically.
-              </p>
               <button
                 type="button"
-                className="ui-btn-primary w-auto px-6 py-3"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-200 disabled:opacity-50"
                 disabled={submitting || !audioBlob}
                 onClick={submit}
                 aria-busy={submitting}
@@ -348,74 +379,85 @@ export function MockInterview() {
                 {submitting ? (
                   <>
                     <Spinner />
-                    Analyzing…
+                    Analyzing
                   </>
                 ) : (
                   "Generate report"
                 )}
               </button>
             </div>
-          </div>
 
-          {error && (
-            <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-100">
-              {error}
-            </div>
-          )}
+            {error && (
+              <div className="mt-3 rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">
+                {error}
+              </div>
+            )}
+          </div>
         </section>
 
-        <aside className="ui-card ui-card-hover p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Environment (optional)</p>
-          <p className="mt-2 text-sm text-zinc-400">
-            Capture a single frame for workspace scoring. Skip if you’re on-the-go.
-          </p>
-
-          <div className="mt-5 flex flex-wrap gap-2">
-            {!camStream && !previewUrl && (
-              <button type="button" className="ui-btn-ghost py-3" onClick={startCamera}>
-                Start camera
-              </button>
-            )}
-            {camStream && (
-              <>
-                <button type="button" className="ui-btn-primary w-auto px-4 py-3" onClick={captureFrame}>
-                  Capture
-                </button>
-                <button type="button" className="ui-btn-ghost py-3" onClick={stopCamera}>
-                  Stop
-                </button>
-              </>
-            )}
-            <label className="ui-btn-ghost cursor-pointer border-dashed py-3">
-              Upload
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  setSnapshotFile(f);
-                  setPreviewUrl(URL.createObjectURL(f));
-                }}
-              />
-            </label>
+        <aside className="rounded-2xl border border-zinc-800 bg-[#0F0F11] shadow-sm">
+          <div className="border-b border-white/5 p-4">
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Prompt</p>
+            <div className="mt-3 grid gap-3">
+              <label className="text-xs font-medium text-zinc-400">
+                Question
+                <select
+                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  value={questionId}
+                  onChange={(e) => setQuestionId(e.target.value)}
+                >
+                  {QUESTION_BANK.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.track.toUpperCase()} · {q.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs font-medium text-zinc-400">
+                Topic
+                <select
+                  className="mt-2 w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value as Topic)}
+                >
+                  <option>M&A</option>
+                  <option>LBO</option>
+                  <option>Valuation</option>
+                </select>
+              </label>
+            </div>
           </div>
 
-          <div className="mt-5 overflow-hidden rounded-2xl border border-zinc-800 bg-black/40">
-            {camStream ? (
-              <video ref={videoRef} className="aspect-video w-full object-cover" playsInline muted />
-            ) : previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt="Environment preview" className="aspect-video w-full object-cover" />
-            ) : (
-              <div className="flex aspect-video items-center justify-center text-sm text-zinc-600">No frame selected</div>
-            )}
+          <div className="p-4">
+            <p className="text-sm font-semibold text-zinc-100">{question.title}</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{question.prompt}</p>
           </div>
 
-          <div className="mt-4 text-xs text-zinc-500">
-            Tip: neutral background, face the light, remove clutter from the frame.
-          </div>
+          {result && (
+            <div className="border-t border-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Report</p>
+              <div className="mt-3 flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-4xl font-semibold text-white">{result.fit.fit_score}</div>
+                  <div className="mt-1 text-xs text-zinc-500">
+                    Env {result.fit.environment_component} · Tech {result.fit.technical_component} · Beh{" "}
+                    {result.behavioral.score}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Narrative</div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/40 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Transcript</div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </aside>
       </div>
 
