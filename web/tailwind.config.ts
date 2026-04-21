@@ -15,6 +15,7 @@ export default {
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
         mono: ["var(--font-geist-mono)", "ui-monospace", "monospace"],
+        brand: ["var(--font-brand)", "var(--font-inter)", "system-ui", "sans-serif"],
       },
       animation: {
         "fade-in": "fade-in 0.4s ease-out forwards",

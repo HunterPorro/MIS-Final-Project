@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import settings
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.request_id import RequestIdMiddleware
-from api.routers import assess
-from api.routers import mock_interview
+from api.routers import assess, mock_interview
 from api.services.runtime_models import preload
 
 
@@ -40,15 +39,19 @@ app.include_router(mock_interview.router, prefix="")
 
 
 @app.get("/health")
-def health():
-    from api.ml.asr import DEFAULT_ASR_MODEL
+def health(response: Response):
     from api.services.runtime_models import model_status, technical_path, workspace_path
+
+    response.headers["Cache-Control"] = "no-store, max-age=0"
 
     ws_ok = workspace_path().is_file()
     tech_ok = (technical_path() / "config.json").is_file()
+    ready = ws_ok and tech_ok
 
     return {
         "ok": True,
+        "ready": ready,
+        "status": "ready" if ready else "degraded",
         "service": "final-round-api",
         "version": "1.0.0",
         "workspace_ckpt": ws_ok,
@@ -58,8 +61,9 @@ def health():
         # What each stage uses (no separate “embedding API”: DistilBERT uses token embeddings internally)
         "pipeline": {
             "workspace": "ResNet18 CNN (image → professional vs unprofessional workspace)",
-            "technical_nlp": "DistilBERT sequence classifier (topic-prefixed text → expertise level 0–3)",
-            "asr": f"Transformers ASR pipeline ({DEFAULT_ASR_MODEL})",
+            "technical_nlp": "DistilBERT sequence classifier (topic-prefixed text → expertise level 0–3); "
+            "behavioral prompts use a dedicated communication rubric (finance classifier skipped — OOD-safe)",
+            "asr": f"Transformers ASR pipeline ({settings.asr_model})",
             "behavioral": "Rule-based STAR/rubric scoring on transcript",
         },
         "artifacts": {

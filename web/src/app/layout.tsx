@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Inter } from "next/font/google";
+import { Geist_Mono, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -11,6 +11,14 @@ const inter = Inter({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
+});
+
+/** Display font for logo / brand moments only */
+const plusJakarta = Plus_Jakarta_Sans({
+  variable: "--font-brand",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
   display: "swap",
 });
 
@@ -70,9 +78,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <body
-        className={`${inter.variable} ${geistMono.variable} bg-[#0A0A0A] min-h-screen antialiased text-zinc-100 selection:bg-zinc-100 selection:text-black`}
+        className={`${inter.variable} ${geistMono.variable} ${plusJakarta.variable} bg-[#0A0A0A] min-h-screen antialiased text-zinc-100 selection:bg-zinc-100 selection:text-black`}
       >
         {children}
       </body>

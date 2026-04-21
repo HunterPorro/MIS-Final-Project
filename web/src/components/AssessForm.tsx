@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MockInterviewResponse, Topic } from "@/lib/types";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
+import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
 
 type ApiHealth = {
   ok: boolean;
+  ready?: boolean;
+  status?: string;
   service?: string;
   version?: string;
   workspace_ckpt: boolean;
@@ -146,10 +149,8 @@ export function AssessForm() {
   }, [stream]);
 
   const refreshHealth = useCallback(async () => {
-    setHealth(null);
-    setHealthError(null);
     try {
-      const res = await fetch(apiUrl("/health"), { cache: "no-store" });
+      const res = await apiFetch(apiUrl("/health"), { cache: "no-store" });
       if (!res.ok) {
         setHealthError(`Health check failed (${res.status})`);
         return;
@@ -165,7 +166,10 @@ export function AssessForm() {
   }, []);
 
   useEffect(() => {
-    void refreshHealth();
+    const id = window.setTimeout(() => {
+      void refreshHealth();
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [refreshHealth]);
 
   useEffect(() => {
@@ -283,7 +287,7 @@ export function AssessForm() {
       fd.append("topic", topic);
       fd.append("audio_wav", new File([wav], "answer.wav", { type: "audio/wav" }));
       if (snapshotFile) fd.append("image", snapshotFile);
-      const res = await fetch(apiUrl("/mock-interview"), {
+      const res = await apiFetch(apiUrl("/mock-interview"), {
         method: "POST",
         body: fd,
       });
@@ -327,7 +331,8 @@ export function AssessForm() {
     }
   };
 
-  const modelsReady = health?.workspace_ckpt === true && health?.technical_model === true;
+  const modelsReady =
+    health?.ready ?? (health?.workspace_ckpt === true && health?.technical_model === true);
 
   const resetAssessment = useCallback(() => {
     stream?.getTracks().forEach((t) => t.stop());
@@ -492,7 +497,7 @@ export function AssessForm() {
               2
             </span>
             <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-semibold text-white">Mock interview response</h3>
+              <h3 className="text-lg font-semibold text-white">Scored interview response</h3>
               <p className="mt-1 text-sm text-zinc-500">Record audio + choose topic</p>
             </div>
           </div>
@@ -573,6 +578,16 @@ export function AssessForm() {
               className="rounded-xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm leading-relaxed text-red-100"
             >
               {error}
+            </div>
+          )}
+
+          {loading && (
+            <div
+              className="rounded-2xl border border-white/10 bg-zinc-950/50 p-4"
+              role="status"
+              aria-live="polite"
+            >
+              <AnalysisProgress variant="assess" />
             </div>
           )}
         </section>
@@ -656,6 +671,16 @@ export function AssessForm() {
               <p className="mt-2 text-xs tabular-nums text-zinc-500 print:text-zinc-600">
                 Classifier confidence · {Math.round(result.technical.level_confidence * 100)}%
               </p>
+              {result.technical.coverage_score != null && result.technical.coverage_score > 0 && (
+                <p className="mt-1 text-xs tabular-nums text-zinc-500 print:text-zinc-600">
+                  Structure coverage · {Math.round(result.technical.coverage_score)}%
+                </p>
+              )}
+              {result.technical.explanation_score != null && result.technical.explanation_score > 0 && (
+                <p className="mt-1 text-xs tabular-nums text-zinc-500 print:text-zinc-600">
+                  Causal clarity · {Math.round(result.technical.explanation_score)}%
+                </p>
+              )}
             </div>
           </div>
 

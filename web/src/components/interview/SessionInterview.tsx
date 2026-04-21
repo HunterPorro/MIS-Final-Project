@@ -2,13 +2,31 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MockInterviewResponse, Topic } from "@/lib/types";
-import { apiUrl } from "@/lib/api";
-import { QUESTION_BANK, type InterviewQuestion } from "@/components/interview/QuestionBank";
+import { apiFetch, apiUrl } from "@/lib/api";
+import { waitForVideoDimensions } from "@/lib/video";
+import { buildSuperdaySession, type InterviewQuestion } from "@/components/interview/QuestionBank";
+import { computeMicLevel, createMicBuffers, emaNext, type MicAnalysisBuffers } from "@/lib/micLevel";
+import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
+
+const SUPERDAY_MAX_SECONDS = 90;
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function Spinner() {
+  return (
+    <svg className="h-5 w-5 motion-reduce:animate-none" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+      />
+    </svg>
+  );
 }
 
 function encodeWavMonoPCM16(audioBuffer: AudioBuffer): Blob {
@@ -71,6 +89,9 @@ async function blobWebmToWav(webm: Blob): Promise<Blob> {
 
 async function parseError(res: Response): Promise<string> {
   const t = await res.text();
+  if (t.includes("Vercel Security Checkpoint") || t.includes("vercel.link/security-checkpoint")) {
+    return "Backend request was blocked by Vercel Security Checkpoint. Set NEXT_PUBLIC_USE_PROXY=1 and BACKEND_URL to your FastAPI host.";
+  }
   try {
     const j = JSON.parse(t) as { detail?: unknown };
     if (typeof j.detail === "string") return j.detail;
@@ -90,22 +111,11 @@ function uniq<T>(xs: T[]): T[] {
 }
 
 export function SessionInterview() {
-  const sessionQuestions = useMemo<InterviewQuestion[]>(() => {
-    // Default 3-question flow: 1 behavioral + 2 technical
-    const pick = (id: string) => QUESTION_BANK.find((q) => q.id === id);
-    return [
-      pick("behav-tell-me"),
-      pick("tech-valuation"),
-      pick("tech-ma"),
-    ].filter(Boolean) as InterviewQuestion[];
-  }, []);
+  const [sessionQuestions, setSessionQuestions] = useState<InterviewQuestion[]>(() => buildSuperdaySession());
 
   const [idx, setIdx] = useState(0);
   const q = sessionQuestions[idx];
-  const [topic, setTopic] = useState<Topic>(q?.topicHint ?? "M&A");
-  useEffect(() => {
-    if (q?.topicHint) setTopic(q.topicHint);
-  }, [q?.topicHint]);
+  const topic: Topic = q?.topicHint ?? "M&A";
 
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -119,11 +129,13 @@ export function SessionInterview() {
   const rafRef = useRef<number | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1
   const [noInputStreakMs, setNoInputStreakMs] = useState(0);
-  const [inputDetectedStreakMs, setInputDetectedStreakMs] = useState(0);
+  const micEmaRef = useRef(0);
+  const micBufRef = useRef<MicAnalysisBuffers | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reports, setReports] = useState<MockInterviewResponse[]>([]);
+  const [awaitingNext, setAwaitingNext] = useState(false);
   const done = reports.length === sessionQuestions.length;
 
   const downloadJson = useCallback((filename: string, value: unknown) => {
@@ -137,6 +149,143 @@ export function SessionInterview() {
     a.remove();
     URL.revokeObjectURL(url);
   }, []);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const [camStream, setCamStream] = useState<MediaStream | null>(null);
+  const camStreamRef = useRef<MediaStream | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+  const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [apiOk, setApiOk] = useState<boolean | null>(null);
+
+  const stopCamera = useCallback(() => {
+    camStream?.getTracks().forEach((t) => t.stop());
+    setCamStream(null);
+  }, [camStream]);
+
+  const videoRefCb = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    setVideoEl(el);
+  }, []);
+
+  useEffect(() => {
+    camStreamRef.current = camStream;
+  }, [camStream]);
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (!camStream) {
+      el.srcObject = null;
+      return;
+    }
+    el.srcObject = camStream;
+    const play = () => el.play().catch(() => {});
+    el.onloadedmetadata = play;
+    play();
+    return () => {
+      el.onloadedmetadata = null;
+    };
+  }, [camStream, videoEl]);
+
+  const startCamera = async () => {
+    setError(null);
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      setCamStream(s);
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message ? `Camera error: ${e.message}` : "Camera access denied or unavailable.";
+      setError(msg);
+    }
+  };
+
+  const captureFrame = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const ready = await waitForVideoDimensions(video, 8000);
+    if (!ready) {
+      setError("Camera preview is not ready yet. Wait a moment, then try Capture again.");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        setSnapshotFile(new File([blob], "environment.jpg", { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      0.92,
+    );
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const res = await apiFetch(apiUrl("/health"), { method: "GET" });
+        if (cancelled) return;
+        setApiOk(res.ok);
+      } catch {
+        if (cancelled) return;
+        setApiOk(false);
+      }
+    };
+    run();
+    const id = window.setInterval(run, 25_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    try {
+      rec.stop();
+    } catch {
+      // ignore
+    }
+    recorderRef.current = null;
+    setRecording(false);
+    if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
+    tickRef.current = undefined;
+    setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
+    setMicLevel(0);
+    micEmaRef.current = 0;
+    micBufRef.current = null;
+    setNoInputStreakMs(0);
+    if (rafRef.current) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
+  }, []);
+
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+
+  useEffect(() => {
+    if (!recording) return;
+    if (seconds >= SUPERDAY_MAX_SECONDS) {
+      stopRecordingRef.current();
+    }
+  }, [recording, seconds]);
 
   const startRecording = async () => {
     setError(null);
@@ -154,9 +303,11 @@ export function SessionInterview() {
       const src = ctx.createMediaStreamSource(s);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.85;
+      analyser.smoothingTimeConstant = 0.55;
       src.connect(analyser);
       analyserRef.current = analyser;
+      micBufRef.current = createMicBuffers(analyser);
+      micEmaRef.current = 0;
 
       const rec = new MediaRecorder(s);
       recorderRef.current = rec;
@@ -168,23 +319,19 @@ export function SessionInterview() {
       rec.start();
       setRecording(true);
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
-      tickRef.current = window.setInterval(() => setSeconds((v) => v + 1), 1000);
+      tickRef.current = window.setInterval(() => {
+        setSeconds((v) => Math.min(v + 1, SUPERDAY_MAX_SECONDS));
+      }, 1000);
 
-      const data = new Uint8Array(analyser.frequencyBinCount);
       const loop = () => {
         const a = analyserRef.current;
-        if (!a) return;
-        a.getByteTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-          const x = (data[i]! - 128) / 128;
-          sum += x * x;
-        }
-        const rms = Math.sqrt(sum / data.length);
-        const level = Math.min(1, rms * 3.2);
+        const bufs = micBufRef.current;
+        if (!a || !bufs) return;
+        const raw = computeMicLevel(a, bufs.time, bufs.freq);
+        micEmaRef.current = emaNext(micEmaRef.current, raw, 0.32);
+        const level = micEmaRef.current;
         setMicLevel(level);
-        setNoInputStreakMs((ms) => (level < 0.02 ? Math.min(5000, ms + 16) : 0));
-        setInputDetectedStreakMs((ms) => (level >= 0.02 ? Math.min(5000, ms + 16) : 0));
+        setNoInputStreakMs((ms) => (level < 0.018 ? Math.min(8000, ms + 16) : 0));
         rafRef.current = window.requestAnimationFrame(loop);
       };
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
@@ -192,34 +339,6 @@ export function SessionInterview() {
     } catch {
       setError("Mic access denied or unavailable.");
     }
-  };
-
-  const stopRecording = () => {
-    const rec = recorderRef.current;
-    if (!rec) return;
-    try {
-      rec.stop();
-    } catch {
-      // ignore
-    }
-    recorderRef.current = null;
-    setRecording(false);
-    if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
-    tickRef.current = undefined;
-    setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
-    setMicLevel(0);
-    setNoInputStreakMs(0);
-    setInputDetectedStreakMs(0);
-    if (rafRef.current) {
-      window.cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    analyserRef.current?.disconnect();
-    analyserRef.current = null;
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
-    audioStreamRef.current = null;
   };
 
   const submitAnswer = async () => {
@@ -237,30 +356,62 @@ export function SessionInterview() {
       fd.append("question_id", q.id);
       fd.append("question_track", q.track);
       fd.append("audio_wav", new File([wav], `${q.id}.wav`, { type: "audio/wav" }));
-      const res = await fetch(apiUrl("/mock-interview"), { method: "POST", body: fd });
+      if (snapshotFile) fd.append("image", snapshotFile);
+      const ctrl = new AbortController();
+      const t = window.setTimeout(() => ctrl.abort(), 120_000);
+      const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
+      window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
       const data = (await res.json()) as MockInterviewResponse;
       setReports((prev) => [...prev, data]);
+      const completedAll = reports.length + 1 >= sessionQuestions.length;
+      if (completedAll) {
+        setAwaitingNext(false);
+        window.setTimeout(() => {
+          document.getElementById("superday-summary")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 140);
+      } else {
+        setAwaitingNext(true);
+      }
       setAudioBlob(null);
       setSeconds(0);
-      setIdx((v) => Math.min(v + 1, sessionQuestions.length - 1));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed");
+      const msg =
+        e instanceof Error
+          ? e.name === "AbortError"
+            ? "Request timed out. Check your backend host and try again."
+            : e.message
+          : "Request failed";
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
+  const goNextQuestion = () => {
+    setAwaitingNext(false);
+    setIdx((i) => Math.min(i + 1, sessionQuestions.length - 1));
+  };
+
   const reset = () => {
+    stopCamera();
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setSnapshotFile(null);
+    setSessionQuestions(buildSuperdaySession());
     setIdx(0);
     setReports([]);
+    setAwaitingNext(false);
     setAudioBlob(null);
     setSeconds(0);
     setError(null);
   };
 
+  // Unmount cleanup only — do not depend on camStream/stopCamera/previewUrl or the camera will stop when the stream updates.
   useEffect(() => {
     return () => {
+      camStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
       analyserRef.current?.disconnect();
@@ -290,88 +441,217 @@ export function SessionInterview() {
     <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="type-h1">Superday room</div>
-          <div className="type-muted mt-1">Short session · Submit each answer to advance</div>
+          <div className="type-h1">Full mock interview</div>
+          <div className="type-muted mt-1">
+            {sessionQuestions.length} questions · behavioral first, then technical (randomized each session) ·{" "}
+            {formatTime(SUPERDAY_MAX_SECONDS)} max per take · Full session report at the end
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="meet-chip">Connected</span>
+          <span className="meet-chip">Web</span>
+          <span className="meet-chip">
+            API{" "}
+            {apiOk === null ? (
+              <span className="text-zinc-500">…</span>
+            ) : apiOk ? (
+              <span className="text-zinc-200">OK</span>
+            ) : (
+              <span className="text-amber-200/90">Down</span>
+            )}
+          </span>
           <span className="meet-chip">
             Q {Math.min(idx + 1, sessionQuestions.length)} / {sessionQuestions.length}
           </span>
           <span className="meet-chip">{q?.track?.toUpperCase?.() ?? "—"}</span>
         </div>
       </div>
-      <div className="mx-auto max-w-3xl text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Superday session</p>
-        <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">Session</h2>
-        <p className="mt-4 text-sm leading-relaxed text-zinc-400 sm:text-base">
-          Run a short session and get a single aggregated report at the end.
-        </p>
-      </div>
 
-      <div className="meet-panel frame-gradient mt-10 p-6 sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
+      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+        <section className="frame-gradient bg-black shadow-[0_18px_50px_-35px_rgba(0,0,0,0.85)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-zinc-100">Full mock</p>
+              <p className="mt-0.5 truncate text-xs text-zinc-500">{q?.title ?? "—"}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="meet-chip">
+                <span
+                  className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`}
+                  aria-hidden
+                />
+                {recording ? "Recording" : "Ready"}
+              </span>
+              <span className="meet-chip">
+                <span className="text-zinc-400">{recording ? "Time left" : "Elapsed"}</span>
+                <span className="tabular-nums">
+                  {recording ? formatTime(Math.max(0, SUPERDAY_MAX_SECONDS - seconds)) : formatTime(seconds)}
+                </span>
+              </span>
+              <span className="meet-chip">
+                <span className="text-zinc-400">Mic</span>
+                <span className="meet-meter" aria-hidden>
+                  <span
+                    className="meet-meter-fill transition-[width] duration-75 ease-out"
+                    style={{ width: `${Math.round(micLevel * 100)}%` }}
+                  />
+                </span>
+              </span>
+              {recording && noInputStreakMs >= 2000 && (
+                <span className="meet-chip border-amber-500/25 text-amber-100/90">Unable to detect microphone input</span>
+              )}
+              <span className="meet-chip">{q?.track?.toUpperCase?.() ?? "—"}</span>
+              {q && <span className="meet-chip">Suggested {formatTime(q.suggestedSeconds)}</span>}
+            </div>
+          </div>
+
+          <div className="relative aspect-video w-full bg-zinc-950">
+            {camStream ? (
+              <video ref={videoRefCb} className="h-full w-full object-cover" playsInline muted autoPlay />
+            ) : previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt="Environment preview" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <div className="text-center">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 text-xl font-semibold text-zinc-200">
+                    SD
+                  </div>
+                  <div className="mt-3 text-sm text-zinc-400">Camera off</div>
+                  <div className="mt-1 text-xs text-zinc-600">You can still record audio and submit answers.</div>
+                </div>
+              </div>
+            )}
+
+            {!camStream && !done && (
+              <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2 text-xs text-zinc-200 backdrop-blur">
+                <span className="text-zinc-300">
+                  <span className="font-semibold text-zinc-100">Tip:</span> turn on the camera for a virtual-interview feel,
+                  or upload a frame for environment scoring.
+                </span>
+                <button
+                  type="button"
+                  className="rounded-full bg-white px-3 py-1 font-semibold text-zinc-900 hover:bg-zinc-200"
+                  onClick={startCamera}
+                >
+                  Turn on camera
+                </button>
+              </div>
+            )}
+
+            {audioBlob && !recording && (
+              <div
+                className="absolute left-3 top-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-100"
+                style={{ boxShadow: "0 14px 40px -25px rgba(79,70,229,0.55)" }}
+              >
+                Recorded
+              </div>
+            )}
+            {snapshotFile && (
+              <div
+                className="absolute right-3 top-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-100"
+                style={{ boxShadow: "0 14px 40px -25px rgba(79,70,229,0.55)" }}
+              >
+                Env frame ready
+              </div>
+            )}
+
+            {submitting && (
+              <div className="evaluate-overlay" role="status" aria-live="polite">
+                <div className="evaluate-orb" aria-hidden>
+                  <span className="evaluate-ring" />
+                  <span className="evaluate-ring-2" />
+                </div>
+                <p className="text-sm font-semibold tracking-tight text-zinc-50">Saving and scoring</p>
+                <AnalysisProgress variant="session" className="mx-auto" />
+                <p className="max-w-[260px] text-xs leading-relaxed text-zinc-500">
+                  Feedback unlocks when you complete the full session.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <aside className="meet-panel frame-gradient">
+          <div className="border-b border-white/5 p-4">
             <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
               Question {Math.min(idx + 1, sessionQuestions.length)} / {sessionQuestions.length}
             </p>
             <h3 className="mt-2 text-xl font-semibold text-white">{q?.title}</h3>
             <p className="mt-3 text-sm leading-relaxed text-zinc-400">{q?.prompt}</p>
-          </div>
-          <div className="shrink-0 text-right text-xs text-zinc-500">
-            Suggested time
-            <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-200">
-              {q ? formatTime(q.suggestedSeconds) : "—"}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <label className="ui-label">
-            Topic
-            <select className="ui-input" value={topic} onChange={(e) => setTopic(e.target.value as Topic)} disabled={done}>
-              <option>M&A</option>
-              <option>LBO</option>
-              <option>Valuation</option>
-            </select>
-            <span className="mt-2 block text-xs text-zinc-500">Auto-set for technical prompts; adjustable for behavioral.</span>
-          </label>
-          <div className="rounded-2xl border border-white/10 bg-black/35 p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Recording</p>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3 text-sm text-zinc-300">
-                <span className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`} aria-hidden />
-                <span className="tabular-nums">{formatTime(seconds)}</span>
-                <span className="meet-meter" aria-hidden>
-                  <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
-                </span>
-                {audioBlob ? <span className="text-zinc-100">Recorded</span> : <span className="text-zinc-500">Not recorded</span>}
-                {recording && inputDetectedStreakMs >= 600 && noInputStreakMs === 0 && <span className="text-emerald-200/90">Input</span>}
-                {recording && noInputStreakMs >= 1500 && <span className="text-amber-200/90">No input</span>}
+            {q?.topicHint && (
+              <p className="mt-3 text-xs text-zinc-500">
+                Scoring focus: <span className="font-medium text-zinc-300">{q.topicHint}</span>
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
+              <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/35 px-4 py-3 text-xs leading-relaxed text-zinc-400">
+                One timed response per prompt ({formatTime(SUPERDAY_MAX_SECONDS)} max). Recording stops automatically at
+                zero. Submit each take; you&apos;ll get a full session report when you finish all questions.
+              </div>
+              <div className="shrink-0 text-right text-xs text-zinc-500">
+                Suggested pace
+                <div className="mt-1 text-lg font-semibold tabular-nums text-zinc-200">
+                  {q ? formatTime(Math.min(q.suggestedSeconds, SUPERDAY_MAX_SECONDS)) : "—"}
+                </div>
               </div>
             </div>
-            <div className="mt-3 text-xs text-zinc-500">
-              Use the control dock below to record, submit, and move through the session.
+            {awaitingNext && !done && (
+              <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+                <p className="text-sm font-semibold text-emerald-100/95">Answer saved</p>
+                <p className="mt-1 text-xs text-zinc-400">When you&apos;re ready, continue to the next prompt.</p>
+                <button
+                  type="button"
+                  className="mt-3 w-full rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  onClick={goNextQuestion}
+                >
+                  Next question
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="p-4">
+            <div className="rounded-2xl border border-white/10 bg-black/35 p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Recording</p>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-300">
+                  <span className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`} aria-hidden />
+                  <span className="tabular-nums">
+                    {recording ? formatTime(Math.max(0, SUPERDAY_MAX_SECONDS - seconds)) : formatTime(seconds)}
+                  </span>
+                  <span className="meet-meter" aria-hidden>
+                    <span
+                      className="meet-meter-fill transition-[width] duration-75 ease-out"
+                      style={{ width: `${Math.round(micLevel * 100)}%` }}
+                    />
+                  </span>
+                  {audioBlob ? (
+                    <span className="text-zinc-100">Recorded</span>
+                  ) : (
+                    <span className="text-zinc-500">Not recorded</span>
+                  )}
+                  {recording && noInputStreakMs >= 2000 && (
+                    <span className="text-amber-200/90">Mic unclear</span>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-zinc-500">
+                Use the dock below for mic, camera, record, submit, and reset.
+              </div>
             </div>
           </div>
-        </div>
-
-        {error && (
-          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-100">
-            {error}
-          </div>
-        )}
+        </aside>
       </div>
 
       {done && (
-        <section className="ui-card mx-auto mt-10 max-w-6xl p-6 sm:p-10">
+        <section id="superday-summary" className="ui-card mx-auto mt-10 max-w-6xl p-6 sm:p-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Session report</p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
-                onClick={() => downloadJson("superday-report.json", { summary, reports })}
+                onClick={() => downloadJson("full-mock-report.json", { summary, reports })}
               >
                 Download JSON
               </button>
@@ -382,7 +662,7 @@ export function SessionInterview() {
                   try {
                     await navigator.clipboard.writeText(
                       [
-                        `Superday summary: Fit ${summary.avgFit} (Env ${summary.avgEnv} · Tech ${summary.avgTech} · Beh ${summary.avgBeh})`,
+                        `Full mock summary: Fit ${summary.avgFit} (Env ${summary.avgEnv} · Tech ${summary.avgTech} · Beh ${summary.avgBeh})`,
                         "",
                         "Top technical gaps:",
                         ...(summary.topGaps.length ? summary.topGaps : ["None flagged."]),
@@ -419,6 +699,23 @@ export function SessionInterview() {
             </div>
           </div>
 
+          <div className="mt-8">
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Question by question</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {reports.map((r, i) => {
+                const sq = sessionQuestions[i];
+                return (
+                  <div key={sq?.id ?? `r-${i}`} className="meet-section">
+                    <div className="text-xs text-zinc-500">Question {i + 1}</div>
+                    <div className="mt-1 text-sm font-semibold leading-snug text-zinc-100">{sq?.title ?? "—"}</div>
+                    <div className="mt-3 text-2xl font-semibold tabular-nums text-white">{r.fit.fit_score}</div>
+                    <div className="mt-1 text-xs text-zinc-500">Fit score</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <div className="meet-section">
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Top technical gaps</p>
@@ -450,7 +747,13 @@ export function SessionInterview() {
         <div className="flex items-center gap-2">
           {!recording ? (
             <div className="group relative">
-              <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} disabled={done} aria-label="Start recording">
+              <button
+                type="button"
+                className="meet-btn meet-btn-primary"
+                onClick={startRecording}
+                disabled={done || submitting || awaitingNext}
+                aria-label="Start recording"
+              >
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
@@ -470,6 +773,66 @@ export function SessionInterview() {
             </div>
           )}
 
+          {!camStream ? (
+            <div className="group relative">
+              <button type="button" className="meet-btn" onClick={startCamera} disabled={done} aria-label="Start camera">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14" />
+                  <rect x="3" y="7" width="12" height="10" rx="2" ry="2" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Camera</span>
+            </div>
+          ) : (
+            <div className="group relative">
+              <button type="button" className="meet-btn" onClick={stopCamera} aria-label="Stop camera">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h12a2 2 0 012 2v6a2 2 0 01-2 2H3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Camera off</span>
+            </div>
+          )}
+
+          <div className="group relative">
+            <label className="meet-btn cursor-pointer" aria-label="Upload environment frame">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l5-5 5 5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14" />
+              </svg>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={done}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  setSnapshotFile(f);
+                  setPreviewUrl((prev) => {
+                    if (prev) URL.revokeObjectURL(prev);
+                    return URL.createObjectURL(f);
+                  });
+                }}
+              />
+            </label>
+            <span className="meet-tooltip">Upload frame</span>
+          </div>
+
+          {camStream && (
+            <div className="group relative">
+              <button type="button" className="meet-btn" onClick={captureFrame} disabled={done} aria-label="Capture environment frame">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h4l2-2h4l2 2h4v12H4z" />
+                  <circle cx="12" cy="13" r="3.5" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Capture</span>
+            </div>
+          )}
+
           <div className="group relative">
             <button
               type="button"
@@ -480,7 +843,7 @@ export function SessionInterview() {
               aria-label="Submit answer"
             >
               {submitting ? (
-                <span className="text-xs font-semibold">…</span>
+                <Spinner />
               ) : (
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />

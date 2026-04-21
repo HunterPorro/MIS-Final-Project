@@ -27,6 +27,10 @@ class TechnicalResult(BaseModel):
     coverage: dict[str, bool] | None = None
     explained: dict[str, bool] | None = None
     coverage_score: float | None = None
+    explanation_score: float | None = Field(
+        default=None,
+        description="Among rubric dimensions touched, share with causal language nearby (0–100).",
+    )
 
 
 class BehavioralResult(BaseModel):

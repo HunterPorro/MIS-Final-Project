@@ -2,14 +2,14 @@ export function QuickTips() {
   return (
     <section
       id="tips"
-      className="scroll-mt-[5.5rem] border-b border-white/5 py-12 sm:py-16 print:hidden"
+      className="scroll-mt-[5.5rem] border-b border-white/5 py-10 sm:py-12 print:hidden"
       aria-labelledby="tips-heading"
     >
       <div className="mx-auto max-w-3xl px-4 sm:px-6">
         <details className="group meet-panel frame-gradient overflow-hidden">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 font-medium text-white marker:content-none [&::-webkit-details-marker]:hidden">
-            <span id="tips-heading" className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 font-medium text-white marker:content-none sm:px-6 sm:py-5 [&::-webkit-details-marker]:hidden">
+            <span id="tips-heading" className="flex items-center gap-3 text-sm sm:text-base">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10 sm:h-10 sm:w-10">
                 <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                   <path
                     strokeLinecap="round"
@@ -19,7 +19,7 @@ export function QuickTips() {
                   />
                 </svg>
               </span>
-              Quick tips before you start
+              Before you record
             </span>
             <svg
               className="h-5 w-5 shrink-0 text-zinc-500 transition group-open:rotate-180"
@@ -31,27 +31,35 @@ export function QuickTips() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
-          <div className="border-t border-white/5 bg-black/35 px-6 pb-6 pt-4">
-            <ul className="space-y-4 text-sm leading-relaxed text-zinc-300">
+          <div className="border-t border-white/5 bg-black/35 px-5 pb-5 pt-3 sm:px-6 sm:pb-6 sm:pt-4">
+            <ul className="space-y-3 text-sm leading-relaxed text-zinc-300">
               <li className="flex gap-3 text-zinc-400">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white" aria-hidden />
                 <span>
-                  <strong className="text-zinc-300">Environment:</strong> Face the camera, use soft front light, clear the
-                  background, and dress as you would for a virtual superday.
+                  <strong className="text-zinc-300">Frame:</strong> Face the camera, soft front light, tidy background—same
+                  as a virtual superday if you upload or capture a still for environment signal.
                 </span>
               </li>
               <li className="flex gap-3 text-zinc-400">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white" aria-hidden />
                 <span>
-                  <strong className="text-zinc-300">Technical:</strong> Pick the topic that matches your answer. Write in
-                  complete sentences—structure beats stream-of-consciousness for the model.
+                  <strong className="text-zinc-300">Technical answers:</strong> You&apos;re scored on{" "}
+                  <em className="text-zinc-400 not-italic">speech</em>—signpost structure (&quot;First… then…&quot;), name
+                  concepts explicitly (e.g. WACC, synergies), and avoid a single unstructured ramble.
                 </span>
               </li>
               <li className="flex gap-3 text-zinc-400">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white" aria-hidden />
                 <span>
-                  <strong className="text-zinc-300">Scores:</strong> Fit blends environment and technical signals; use the
-                  output as feedback, not a verdict on candidacy.
+                  <strong className="text-zinc-300">Behavioral answers:</strong> Use STAR beats out loud; add one number or
+                  timeframe so impact is concrete.
+                </span>
+              </li>
+              <li className="flex gap-3 text-zinc-400">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white" aria-hidden />
+                <span>
+                  <strong className="text-zinc-300">Scores:</strong> Fit blends environment, technical, and delivery signals.
+                  Treat the report as coaching feedback—not a hiring verdict.
                 </span>
               </li>
             </ul>

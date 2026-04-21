@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from api.schemas import BehavioralResult, FitResult, TechnicalResult, WorkspaceResult
+
+logger = logging.getLogger(__name__)
+
+
+def _is_behavioral_topic(topic: str) -> bool:
+    return topic.strip().lower() == "behavioral"
 
 
 def build_narrative(
@@ -9,35 +17,65 @@ def build_narrative(
     fit: FitResult,
     behavioral: BehavioralResult | None = None,
 ) -> str:
-    env_note = (
-        "Environment reads as firm-ready for virtual interviews."
-        if workspace.label.lower() == "professional"
-        else "Environment signal suggests tightening setup (lighting, background, and on-camera framing)."
-    )
+    wl = workspace.label.lower()
+    if wl == "unknown":
+        env_note = (
+            "No environment frame was provided, so workspace scoring uses a neutral baseline. "
+            "Add a quick camera snapshot for a grounded read on setting and framing."
+        )
+    elif wl == "professional":
+        env_note = "Environment reads as firm-ready for virtual interviews."
+    else:
+        env_note = "Environment signal suggests tightening setup (lighting, background, and on-camera framing)."
+    is_behavioral_topic = _is_behavioral_topic(technical.topic)
     gaps = (
         ", ".join(technical.concepts_missed[:4])
         if technical.concepts_missed
-        else "no major topic gaps flagged by the checklist (still verify depth verbally)."
+        else (
+            "add specificity (metrics, timeframe, stakeholders) so reviewers can verify impact."
+            if is_behavioral_topic
+            else "no major topic gaps flagged by the checklist (still verify depth verbally)."
+        )
     )
     strengths = (
         ", ".join(technical.skills_identified[:5])
         if technical.skills_identified
-        else "limited explicit markers—consider adding structured technical anchors."
+        else (
+            "add concrete story beats (context, your actions, measurable result)."
+            if is_behavioral_topic
+            else "limited explicit markers—consider adding structured technical anchors."
+        )
     )
     beh_note = ""
+    feedback_line = ""
     if behavioral is not None:
+        star_hits = sum(1 for v in behavioral.star_coverage.values() if v)
         beh_note = (
-            f" Delivery: {behavioral.score:.0f}/100 behavioral. "
+            f" Delivery: {behavioral.score:.0f}/100 behavioral rubric. "
             + ("Quantified impact present. " if behavioral.has_numbers else "Add one quantified outcome. ")
-            + ("STAR structure present. " if sum(1 for v in behavioral.star_coverage.values() if v) >= 3 else "Use STAR structure. ")
+            + ("STAR coverage looks solid. " if star_hits >= 3 else "Tighten STAR: situation → task → actions → result. ")
         )
+        if behavioral.feedback:
+            feedback_line = " Coaching priorities: " + "; ".join(behavioral.feedback[:4]) + "."
+    rubric_label = "Communication & story depth" if is_behavioral_topic else "Technical stance"
+    causal_note = ""
+    if (
+        not is_behavioral_topic
+        and behavioral is None
+        and technical.explanation_score is not None
+    ):
+        es = technical.explanation_score
+        if es < 34.0:
+            causal_note = " Causal clarity looks thin—add a few explicit “because” / “therefore” links between steps."
+        elif es < 55.0:
+            causal_note = " Causal clarity is uneven—tie each major step to why it moves the answer."
     return (
         f"Readiness snapshot — Fit {fit.fit_score:.0f}/100 (env {fit.environment_component:.0f}, "
         f"technical {fit.technical_component:.0f}).{beh_note} {env_note} "
-        f"Technical stance: {technical.expertise_label} on {technical.topic}. "
+        f"{rubric_label}: {technical.expertise_label} on {technical.topic}. "
         f"Observed strengths: {strengths}. "
-        f"Concepts to reinforce next: {gaps}. "
-        f"{technical.summary}"
+        f"{'Gaps to address next' if is_behavioral_topic else 'Concepts to reinforce next'}: {gaps}. "
+        f"{technical.summary}{causal_note}{feedback_line}"
     )
 
 
@@ -52,19 +90,22 @@ async def maybe_enrich_with_llm(narrative: str) -> str:
 
         client = OpenAI(api_key=settings.openai_api_key)
         r = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=settings.openai_model,
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a concise recruiting coach. Rewrite the assessment in 3 short paragraphs. "
-                    "Keep numbers. No medical or legal claims.",
+                    "content": "You are an expert campus and finance interview coach. Rewrite the rubric output into "
+                    "a tight brief: (1) readiness snapshot with fit score, (2) two concrete strengths, "
+                    "(3) two prioritized improvements. Preserve every numeric score verbatim. "
+                    "Professional, encouraging tone. No medical or legal claims.",
                 },
                 {"role": "user", "content": narrative},
             ],
-            temperature=0.3,
-            max_tokens=500,
+            temperature=0.25,
+            max_tokens=650,
         )
         text = (r.choices[0].message.content or "").strip()
         return text or narrative
-    except Exception:
+    except Exception as e:
+        logger.warning("LLM narrative enrich skipped: %s", e)
         return narrative

@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 export function HeroSection() {
   return (
     <section
@@ -13,9 +15,9 @@ export function HeroSection() {
         <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="meet-chip">Final Round</span>
-              <span className="meet-chip">Mock interview room</span>
-              <span className="meet-chip">Superday session</span>
+              <span className="meet-chip font-brand tracking-tight text-zinc-100">Final Round</span>
+              <span className="meet-chip">Prep by topic</span>
+              <span className="meet-chip">Full mock interview</span>
             </div>
 
             <h1 className="mt-6 text-5xl font-semibold tracking-tight text-white sm:text-6xl lg:text-7xl">
@@ -29,10 +31,10 @@ export function HeroSection() {
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <a href="/interview" className="ui-btn-primary w-full sm:w-auto px-7 py-3.5">
-                Start mock interview
+                Start topic prep
               </a>
               <a href="/superday" className="ui-btn-ghost w-full sm:w-auto px-7 py-3.5">
-                Run Superday session
+                Run full mock interview
               </a>
             </div>
 
@@ -55,7 +57,7 @@ export function HeroSection() {
               <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
                 <div className="min-w-0">
                   <div className="text-sm font-semibold text-zinc-100">Interview room preview</div>
-                  <div className="mt-0.5 text-xs text-zinc-500">Prompt · Report · Transcript</div>
+                  <div className="mt-0.5 text-xs text-zinc-500">Main stage · PiP · dock controls</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--accent)" }} aria-hidden />
@@ -64,18 +66,31 @@ export function HeroSection() {
               </div>
 
               <div className="relative aspect-video bg-zinc-950">
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-900 text-xl font-semibold text-zinc-200">
-                      FR
-                    </div>
-                    <div className="mt-3 text-sm text-zinc-300">Meet-style controls</div>
-                    <div className="mt-1 text-xs text-zinc-600">Space to record · Enter to generate</div>
+                <Image
+                  src="/hero-meet-preview.png"
+                  alt="Video call interface with main speaker, picture-in-picture participant, and control dock"
+                  fill
+                  className="object-cover object-center"
+                  sizes="(max-width: 1024px) 100vw, 480px"
+                  priority
+                />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent pt-20 pb-3 pl-4 pr-4 sm:pb-4">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <p className="max-w-[min(100%,20rem)] text-left text-xs leading-relaxed text-zinc-300">
+                      <span className="font-semibold text-zinc-100">Keyboard flow:</span> Space to record · Enter to
+                      generate report
+                    </p>
+                    <span className="shrink-0 rounded-full border border-white/15 bg-black/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400 backdrop-blur-sm">
+                      Meet-style UI
+                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="border-t border-white/5 bg-zinc-950/50 p-4">
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">
+                  Illustrative scores
+                </p>
                 <div className="grid gap-3 sm:grid-cols-3">
                   {[
                     { k: "Fit", v: "78" },

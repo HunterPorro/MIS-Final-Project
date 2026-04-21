@@ -6,7 +6,8 @@ import numpy as np
 from transformers import pipeline
 
 # Default Whisper checkpoint used by `ASRTranscriber` (first run may download weights).
-DEFAULT_ASR_MODEL = "openai/whisper-tiny"
+# Runtime uses `settings.asr_model` (default: whisper-base) for better interview accuracy.
+DEFAULT_ASR_MODEL = "openai/whisper-base"
 
 
 @dataclass(frozen=True)

@@ -13,6 +13,9 @@ FILLER_WORDS = [
     "kind of",
     "basically",
     "actually",
+    "honestly",
+    "literally",
+    "obviously",
 ]
 
 
@@ -42,6 +45,19 @@ def _count_phrase(text: str, phrase: str) -> int:
     return len(re.findall(rf"(?i)\b{re.escape(phrase)}\b", text))
 
 
+def _dedupe_feedback(lines: list[str]) -> list[str]:
+    """Drop near-duplicate coaching lines while preserving order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in lines:
+        key = line.strip().lower()[:72]
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(line)
+    return out
+
+
 def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> BehavioralResult:
     t = transcript.strip()
     low = t.lower()
@@ -52,9 +68,9 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
     task_re = r"(?i)\b(task|goal|responsib|objective|needed to|asked to|my role was to|i was tasked)\b"
     action_re = (
         r"(?i)\b(i\s+(led|built|created|drove|owned|managed|analyz(?:ed|e)|modeled|implemented|designed|"
-        r"partnered|coordinated|synthesized|negotiated|prioritized|executed))\b"
+        r"partnered|coordinated|synthesized|negotiated|prioritized|executed|presented|pitched|structured))\b"
     )
-    result_re = r"(?i)\b(result|impact|outcome|achieved|increased|decreased|improved|delivered|reduced|grew|saved|won)\b"
+    result_re = r"(?i)\b(result|impact|outcome|achieved|increased|decreased|improved|delivered|reduced|grew|saved|won|learned)\b"
     has_outcome_number = bool(re.search(r"\b\d+(?:\.\d+)?\s*(?:%|percent|bps)?\b", t, flags=re.IGNORECASE)) and bool(
         re.search(result_re, t)
     )
@@ -66,6 +82,12 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
         "result": bool(re.search(result_re, t)) or has_outcome_number,
     }
     star_hits = sum(1 for v in star.values() if v)
+    has_sequence = bool(
+        re.search(
+            r"(?i)\b(first|firstly|then|next|after that|finally|ultimately|in parallel|for example|specifically|furthermore)\b",
+            t,
+        )
+    )
 
     # Quantification heuristic
     has_numbers = bool(
@@ -94,6 +116,8 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
         feedback.append("Add detail: one concrete example + a clear closing outcome.")
     if star_hits < 3:
         feedback.append("Structure with STAR: context → task → actions → measurable result.")
+    if star_hits >= 3 and wc < 85:
+        feedback.append("Good structure—now add one more specific detail (who, constraint, or metric) per beat.")
     if not has_numbers:
         feedback.append("Add one metric (%, $, bps, time, volume) to make impact credible.")
     elif has_numbers and not has_outcome_number:
@@ -107,6 +131,14 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
             feedback.append("Pace is fast—slow down slightly for clarity.")
     if not has_time_or_scale:
         feedback.append("Add timeframe or scale (e.g., 2 weeks, 3-month project, $ volume).")
+    if has_sequence and star_hits >= 2:
+        feedback.append("Nice sequencing—keep each step tied to a metric or stakeholder decision.")
+
+    hedge_hits = len(
+        re.findall(r"(?i)\b(i guess|i think|maybe|perhaps|probably|i'm not sure)\b", t)
+    )
+    if hedge_hits >= 3:
+        feedback.append("Reduce hedging (I think/maybe)—swap in one concrete fact per claim.")
 
     # Score (simple, transparent)
     score = 0.0
@@ -115,10 +147,12 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
     pace_score = 12.0 if (wpm is None or (125 <= wpm <= 175)) else 7.0
     length_score = 24.0 if wc >= 110 else 18.0 if wc >= 85 else 12.0 if wc >= 60 else 7.0
     scope_score = 6.0 if has_time_or_scale else 2.0
+    structure_bonus = 4.0 if (has_sequence and star_hits >= 3) else 2.0 if has_sequence else 0.0
+    hedge_penalty = min(10.0, hedge_hits * 2.2)
     filler_penalty = min(18.0, filler_per_100 * 1.6)
 
-    score += star_score + quant_score + pace_score + length_score + scope_score
-    score -= filler_penalty
+    score += star_score + quant_score + pace_score + length_score + scope_score + structure_bonus
+    score -= filler_penalty + hedge_penalty
     score = max(0.0, min(100.0, round(score, 1)))
 
     return BehavioralResult(
@@ -139,8 +173,10 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
             "pace": round(pace_score, 1),
             "length": round(length_score, 1),
             "scope": round(scope_score, 1),
+            "structure": round(structure_bonus, 1),
             "filler_penalty": round(filler_penalty, 1),
+            "hedge_penalty": round(hedge_penalty, 1),
         },
-        feedback=feedback[:6],
+        feedback=_dedupe_feedback(feedback)[:6],
     )
 

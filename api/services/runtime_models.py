@@ -61,7 +61,7 @@ def get_asr() -> ASRTranscriber:
     with _lock:
         if _asr is None:
             # Keep this small for local dev. Upgrade to whisper-small later if desired.
-            _asr = ASRTranscriber(model_name="openai/whisper-tiny")
+            _asr = ASRTranscriber(model_name=settings.asr_model)
             _asr_loaded_at = time.time()
         return _asr
 

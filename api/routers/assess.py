@@ -7,11 +7,12 @@ from io import BytesIO
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import Image
 
+from api.ml.technical_infer import LEVEL_LABELS, interview_technical, normalize_topic, word_count_text
 from api.schemas import AssessResponse, TechnicalResult, WorkspaceResult
 from api.services.fit import compute_fit
 from api.services.narrative import build_narrative, maybe_enrich_with_llm
 from api.services.runtime_models import get_technical, get_workspace
-from api.ml.technical_infer import LEVEL_LABELS, normalize_topic, TechnicalAnalyzer
+from api.utils.scoring import professional_probability
 
 router = APIRouter(tags=["assess"])
 logger = logging.getLogger("final-round-api.assess")
@@ -19,18 +20,6 @@ logger = logging.getLogger("final-round-api.assess")
 # ~8 MiB — enough for high-res webcam JPEGs without accepting huge uploads
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MAX_ANSWER_CHARS = 12000
-
-
-def _professional_prob(classifier_labels: list[str], label: str, confidence: float, class_index: int) -> float:
-    """Map predicted class to P(professional) for scoring."""
-    labels_lower = [x.lower() for x in classifier_labels]
-    try:
-        prof_i = labels_lower.index("professional")
-    except ValueError:
-        prof_i = 0
-    if class_index == prof_i:
-        return confidence
-    return 1.0 - confidence
 
 
 @router.post("/assess", response_model=AssessResponse)
@@ -41,6 +30,8 @@ async def assess(
     image: UploadFile = File(...),
 ):
     t0 = time.perf_counter()
+    if not topic or not str(topic).strip():
+        raise HTTPException(status_code=400, detail="topic is required")
     if len(answer_text.strip()) < 10:
         raise HTTPException(status_code=400, detail="answer_text too short")
     if len(answer_text) > MAX_ANSWER_CHARS:
@@ -74,7 +65,7 @@ async def assess(
     t_norm = normalize_topic(topic)
     t_ws0 = time.perf_counter()
     label, conf, idx = ws.predict_pil(pil)
-    prof_prob = _professional_prob(ws.classes, label, conf, idx)
+    prof_prob = professional_probability(ws.classes, label, conf, idx)
 
     w_res = WorkspaceResult(label=label, confidence=conf, class_index=idx)
 
@@ -87,9 +78,11 @@ async def assess(
     )
 
     t_tech0 = time.perf_counter()
-    level, level_conf, _probs = tech.predict(t_norm, answer_text)
-    skills, missed, coverage, explained, cov_score = TechnicalAnalyzer.lexicon_scan(t_norm, answer_text)
-    summ = TechnicalAnalyzer.short_summary(level, t_norm, skills)
+    track = "behavioral" if t_norm == "Behavioral" else "technical"
+    level, level_conf, skills, missed, coverage, explained, cov_score, explanation_score, summ = interview_technical(
+        t_norm, answer_text, track, tech
+    )
+    wc = word_count_text(answer_text)
     logger.info(
         {
             "request_id": getattr(request.state, "request_id", None),
@@ -109,9 +102,10 @@ async def assess(
         coverage=coverage,
         explained=explained,
         coverage_score=cov_score,
+        explanation_score=explanation_score,
     )
 
-    fit = compute_fit(prof_prob, level)
+    fit = compute_fit(prof_prob, level, transcript_word_count=wc)
     text = build_narrative(w_res, tech_res, fit)
     text = await maybe_enrich_with_llm(text)
 

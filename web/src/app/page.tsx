@@ -1,7 +1,6 @@
 import { HeroSection } from "@/components/home/HeroSection";
-import { ProofStrip } from "@/components/home/ProofStrip";
-import { InteractiveDemo } from "@/components/home/InteractiveDemo";
-import { HowItWorks } from "@/components/home/HowItWorks";
+import { PlacementsMarquee } from "@/components/home/PlacementsMarquee";
+import { ProductStory } from "@/components/home/ProductStory";
 import { QuickTips } from "@/components/home/QuickTips";
 import { CtaBand } from "@/components/home/CtaBand";
 import { SiteFooter } from "@/components/home/SiteFooter";
@@ -11,9 +10,8 @@ export default function Home() {
   return (
     <AppShell>
       <HeroSection />
-      <ProofStrip />
-      <InteractiveDemo />
-      <HowItWorks />
+      <PlacementsMarquee />
+      <ProductStory />
       <QuickTips />
       <CtaBand />
       <SiteFooter />

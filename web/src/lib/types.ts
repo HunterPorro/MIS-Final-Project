@@ -17,6 +17,8 @@ export type AssessResponse = {
     coverage?: Record<string, boolean> | null;
     explained?: Record<string, boolean> | null;
     coverage_score?: number | null;
+    /** Among rubric dimensions touched, share with causal language nearby (0–100). */
+    explanation_score?: number | null;
   };
   fit: {
     fit_score: number;

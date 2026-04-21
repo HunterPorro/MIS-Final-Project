@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     technical_model_dir: str = "technical"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+
+    # ASR: whisper-tiny is fast but error-prone; whisper-base is a better default for interview audio.
+    asr_model: str = "openai/whisper-base"
 
     # Launch hardening
     environment: str = "dev"  # dev|prod

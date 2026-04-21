@@ -59,6 +59,98 @@ body {
   100% { background-position: 0% 50%; }
 }
 
+@keyframes evaluate-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.95;
+  }
+}
+
+@keyframes evaluate-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes placements-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.placements-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: placements-marquee 42s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .placements-marquee-track {
+    animation: none;
+  }
+}
+
+/* Analysis pipeline (mock interview / assess loading) */
+@keyframes analysis-indeterminate {
+  0% {
+    transform: translateX(-100%);
+    width: 35%;
+  }
+  50% {
+    transform: translateX(30%);
+    width: 45%;
+  }
+  100% {
+    transform: translateX(200%);
+    width: 35%;
+  }
+}
+
+.analysis-progress-indeterminate {
+  width: 40%;
+  animation: analysis-indeterminate 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analysis-progress-indeterminate {
+    width: 100%;
+    transform: none;
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
+.evaluate-overlay {
+  @apply pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 border border-white/5 bg-black/75 px-6 text-center backdrop-blur-md;
+}
+
+.evaluate-orb {
+  @apply relative h-20 w-20 rounded-full;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), rgba(79, 70, 229, 0.15) 45%, rgba(0, 0, 0, 0) 70%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 20px 60px -28px rgba(79, 70, 229, 0.55);
+  animation: evaluate-pulse 2.2s ease-in-out infinite;
+}
+
+.evaluate-ring {
+  @apply absolute inset-[-10px] rounded-full border border-white/15;
+  animation: evaluate-spin 8s linear infinite;
+}
+
+.evaluate-ring-2 {
+  @apply absolute inset-[-18px] rounded-full border border-sky-400/20;
+  animation: evaluate-spin 12s linear infinite reverse;
+}
+
 ::selection {
   background-color: #FAFAFA;
   color: #0A0A0A;

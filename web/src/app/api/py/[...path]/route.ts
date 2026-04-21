@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+/** Allow long ASR + scoring upstream (raise Vercel plan limits if you hit timeouts). */
+export const maxDuration = 120;
+
+export const dynamic = "force-dynamic";
+
 const BACKEND = process.env.BACKEND_URL ?? "http://127.0.0.1:8000";
 
 function targetUrl(pathSegments: string[], search: string): string {
@@ -36,6 +41,8 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   if (ct) headers.set("content-type", ct);
   const accept = request.headers.get("accept");
   if (accept) headers.set("accept", accept);
+  const requestId = request.headers.get("x-request-id");
+  if (requestId) headers.set("x-request-id", requestId);
   headers.set("user-agent", "FinalRoundProxy/1.0");
 
   let body: BodyInit | undefined;
@@ -61,6 +68,8 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   const outHeaders = new Headers();
   const upstreamCt = upstream.headers.get("content-type");
   if (upstreamCt) outHeaders.set("content-type", upstreamCt);
+  const upstreamRid = upstream.headers.get("x-request-id");
+  if (upstreamRid) outHeaders.set("x-request-id", upstreamRid);
 
   const payload = await upstream.arrayBuffer();
   // If upstream returned the Vercel Security Checkpoint HTML, translate to actionable JSON.

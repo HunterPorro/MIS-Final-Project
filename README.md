@@ -94,7 +94,9 @@ Direct mode (no proxy): `NEXT_PUBLIC_USE_PROXY=0` and `NEXT_PUBLIC_API_URL=http:
 
 ### Deployment (typical)
 
-- **Frontend (Vercel):** deploy the `web/` app.
+See **[DEPLOY.md](./DEPLOY.md)** for a full launch checklist (Vercel env vars, body-size limits, CI, debugging).
+
+- **Frontend (Vercel):** deploy with **Root Directory** = `web` (see `web/vercel.json` for monorepo install).
   - Set `NEXT_PUBLIC_USE_PROXY=1`
   - Set `BACKEND_URL=https://<your-api-host>` (server-only; used by the Next Route Handler to forward `/api/py/*`)
 - **API (Render, Railway, Fly.io, VM):**

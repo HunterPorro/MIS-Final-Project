@@ -18,3 +18,12 @@ export function apiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
+
+/** Fetch with `X-Request-ID` for log correlation against FastAPI `x-request-id` response header. */
+export function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("X-Request-ID") && typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    headers.set("X-Request-ID", crypto.randomUUID());
+  }
+  return fetch(input, { ...init, headers });
+}

@@ -1,33 +1,18 @@
+import Link from "next/link";
+import { BrandMark, BrandWordmark } from "@/components/brand/BrandMark";
+
+const footerLink =
+  "rounded-sm text-zinc-400 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/25 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]";
+
 export function SiteFooter() {
   return (
     <footer className="border-t border-white/5 bg-black/20 print:hidden">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="flex items-center gap-2 font-semibold text-white">
-              <span className="flex h-9 w-9 items-center justify-center">
-                {/* keep footer dependency-free from app shell; inline mark */}
-                <span
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 shadow-[0_18px_50px_-30px_rgba(0,0,0,0.85)]"
-                  style={{ boxShadow: "0 18px 50px -30px rgba(79, 70, 229, 0.55)" }}
-                  aria-hidden
-                >
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M6.5 7.2c0-1 0.8-1.8 1.8-1.8h7.4c1 0 1.8.8 1.8 1.8v9.6c0 1-.8 1.8-1.8 1.8H8.3c-1 0-1.8-.8-1.8-1.8V7.2Z"
-                      stroke="rgba(255,255,255,0.75)"
-                      strokeWidth="1.4"
-                    />
-                    <path
-                      d="M9 9h6M9 12h4.8M9 15h5.4"
-                      stroke="rgba(96,165,250,0.85)"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </span>
-              </span>
-              Final Round
+            <div className="group flex items-center gap-2.5 text-white">
+              <BrandMark size={36} />
+              <BrandWordmark />
             </div>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-zinc-500">
               Prototype for finance interview readiness. Not a hiring decision or legal advice.
@@ -38,22 +23,22 @@ export function SiteFooter() {
               <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Product</p>
               <ul className="mt-3 space-y-2 text-sm">
                 <li>
-                  <a href="/interview" className="text-zinc-400 hover:text-white">
-                    Mock interview
-                  </a>
+                  <Link href="/interview" className={footerLink}>
+                    Prep by topic
+                  </Link>
                 </li>
                 <li>
-                  <a href="/superday" className="text-zinc-400 hover:text-white">
-                    Superday session
-                  </a>
+                  <Link href="/superday" className={footerLink}>
+                    Full mock interview
+                  </Link>
                 </li>
                 <li>
-                  <a href="/team" className="text-zinc-400 hover:text-white">
+                  <Link href="/team" className={footerLink}>
                     Team
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#how-it-works" className="text-zinc-400 hover:text-white">
+                  <a href="#how-it-works" className={footerLink}>
                     How it works
                   </a>
                 </li>

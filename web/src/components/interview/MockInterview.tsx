@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MockInterviewResponse, Topic } from "@/lib/types";
-import { apiUrl } from "@/lib/api";
+import { apiFetch, apiUrl } from "@/lib/api";
+import { waitForVideoDimensions } from "@/lib/video";
 import { QUESTION_BANK, type InterviewQuestion } from "@/components/interview/QuestionBank";
+import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
+import { computeMicLevel, createMicBuffers, emaNext, type MicAnalysisBuffers } from "@/lib/micLevel";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -82,24 +85,6 @@ async function blobWebmToWav(webm: Blob): Promise<Blob> {
   return wav;
 }
 
-function waitForVideoDimensions(video: HTMLVideoElement, timeoutMs: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const deadline = Date.now() + timeoutMs;
-    const tick = () => {
-      if (video.videoWidth > 0 && video.videoHeight > 0) {
-        resolve(true);
-        return;
-      }
-      if (Date.now() >= deadline) {
-        resolve(false);
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
-    tick();
-  });
-}
-
 async function parseError(res: Response): Promise<string> {
   const t = await res.text();
   if (t.includes("Vercel Security Checkpoint") || t.includes("vercel.link/security-checkpoint")) {
@@ -120,10 +105,7 @@ export function MockInterview() {
     return QUESTION_BANK.find((q) => q.id === questionId) ?? QUESTION_BANK[0];
   }, [questionId]);
 
-  const [topic, setTopic] = useState<Topic>(question?.topicHint ?? "M&A");
-  useEffect(() => {
-    if (question?.topicHint) setTopic(question.topicHint);
-  }, [question?.topicHint]);
+  const topic: Topic = question?.topicHint ?? "M&A";
 
   type RightTab = "prompt" | "report" | "transcript";
   const [rightTab, setRightTab] = useState<RightTab>("prompt");
@@ -132,6 +114,8 @@ export function MockInterview() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
+  const camStreamRef = useRef<MediaStream | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
   const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -147,11 +131,13 @@ export function MockInterview() {
   const rafRef = useRef<number | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1
   const [noInputStreakMs, setNoInputStreakMs] = useState(0);
-  const [inputDetectedStreakMs, setInputDetectedStreakMs] = useState(0);
+  const micEmaRef = useRef(0);
+  const micBufRef = useRef<MicAnalysisBuffers | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MockInterviewResponse | null>(null);
+  const [sessionResults, setSessionResults] = useState<MockInterviewResponse[]>([]);
   const [apiOk, setApiOk] = useState<boolean | null>(null);
 
   const downloadJson = useCallback((filename: string, value: unknown) => {
@@ -171,25 +157,31 @@ export function MockInterview() {
     setCamStream(null);
   }, [camStream]);
 
+  useEffect(() => {
+    camStreamRef.current = camStream;
+  }, [camStream]);
+  useEffect(() => {
+    previewUrlRef.current = previewUrl;
+  }, [previewUrl]);
+
   const videoRefCb = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el;
     setVideoEl(el);
   }, []);
 
   useEffect(() => {
-    const v = videoEl;
-    if (!v) return;
+    const el = videoRef.current;
+    if (!el) return;
     if (!camStream) {
-      v.srcObject = null;
+      el.srcObject = null;
       return;
     }
-    v.srcObject = camStream;
-    const play = () => v.play().catch(() => {});
-    // Some browsers need metadata before play() succeeds.
-    v.onloadedmetadata = play;
+    el.srcObject = camStream;
+    const play = () => el.play().catch(() => {});
+    el.onloadedmetadata = play;
     play();
     return () => {
-      v.onloadedmetadata = null;
+      el.onloadedmetadata = null;
     };
   }, [camStream, videoEl]);
 
@@ -227,15 +219,14 @@ export function MockInterview() {
         if (!blob) return;
         const file = new File([blob], "environment.jpg", { type: "image/jpeg" });
         setSnapshotFile(file);
-        setPreviewUrl(URL.createObjectURL(blob));
-        stopCamera();
+        // Keep camera running (virtual-interview style); live preview stays on.
       },
       "image/jpeg",
       0.92,
     );
   };
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     setError(null);
     setAudioBlob(null);
     setSeconds(0);
@@ -251,9 +242,11 @@ export function MockInterview() {
       const src = ctx.createMediaStreamSource(s);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
-      analyser.smoothingTimeConstant = 0.85;
+      analyser.smoothingTimeConstant = 0.55;
       src.connect(analyser);
       analyserRef.current = analyser;
+      micBufRef.current = createMicBuffers(analyser);
+      micEmaRef.current = 0;
 
       const rec = new MediaRecorder(s);
       recorderRef.current = rec;
@@ -269,23 +262,15 @@ export function MockInterview() {
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
       tickRef.current = window.setInterval(() => setSeconds((v) => v + 1), 1000);
 
-      const data = new Uint8Array(analyser.frequencyBinCount);
       const loop = () => {
         const a = analyserRef.current;
-        if (!a) return;
-        a.getByteTimeDomainData(data);
-        // RMS of centered waveform
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-          const x = (data[i]! - 128) / 128;
-          sum += x * x;
-        }
-        const rms = Math.sqrt(sum / data.length);
-        // map to 0..1 with a bit of gain
-        const level = Math.min(1, rms * 3.2);
+        const bufs = micBufRef.current;
+        if (!a || !bufs) return;
+        const raw = computeMicLevel(a, bufs.time, bufs.freq);
+        micEmaRef.current = emaNext(micEmaRef.current, raw, 0.32);
+        const level = micEmaRef.current;
         setMicLevel(level);
-        setNoInputStreakMs((ms) => (level < 0.02 ? Math.min(5000, ms + 16) : 0));
-        setInputDetectedStreakMs((ms) => (level >= 0.02 ? Math.min(5000, ms + 16) : 0));
+        setNoInputStreakMs((ms) => (level < 0.018 ? Math.min(8000, ms + 16) : 0));
         rafRef.current = window.requestAnimationFrame(loop);
       };
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
@@ -293,9 +278,9 @@ export function MockInterview() {
     } catch {
       setError("Mic access denied or unavailable.");
     }
-  };
+  }, []);
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     const rec = recorderRef.current;
     if (!rec) return;
     try {
@@ -309,8 +294,9 @@ export function MockInterview() {
     tickRef.current = undefined;
     setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
     setMicLevel(0);
+    micEmaRef.current = 0;
+    micBufRef.current = null;
     setNoInputStreakMs(0);
-    setInputDetectedStreakMs(0);
     if (rafRef.current) {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -321,9 +307,23 @@ export function MockInterview() {
     audioCtxRef.current = null;
     audioStreamRef.current?.getTracks().forEach((t) => t.stop());
     audioStreamRef.current = null;
-  };
+  }, []);
 
-  const submit = async () => {
+  const questionIndex = QUESTION_BANK.findIndex((x) => x.id === question.id);
+  const hasNextQuestion = questionIndex >= 0 && questionIndex < QUESTION_BANK.length - 1;
+
+  const goNextQuestion = useCallback(() => {
+    const i = QUESTION_BANK.findIndex((x) => x.id === questionId);
+    const next = QUESTION_BANK[i + 1];
+    if (!next) return;
+    setQuestionId(next.id);
+    setAudioBlob(null);
+    setSeconds(0);
+    setResult(null);
+    setRightTab("prompt");
+  }, [questionId]);
+
+  const submit = useCallback(async () => {
     setError(null);
     setResult(null);
     if (!audioBlob) {
@@ -341,11 +341,12 @@ export function MockInterview() {
       if (snapshotFile) fd.append("image", snapshotFile);
       const ctrl = new AbortController();
       const t = window.setTimeout(() => ctrl.abort(), 120_000);
-      const res = await fetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
+      const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
       window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
       const data = (await res.json()) as MockInterviewResponse;
       setResult(data);
+      setSessionResults((prev) => [...prev, data]);
       setRightTab("report");
       document.getElementById("report")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) {
@@ -359,13 +360,13 @@ export function MockInterview() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [audioBlob, question, snapshotFile, topic]);
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       try {
-        const res = await fetch(apiUrl("/health"), { method: "GET" });
+        const res = await apiFetch(apiUrl("/health"), { method: "GET" });
         if (cancelled) return;
         setApiOk(res.ok);
       } catch {
@@ -389,8 +390,16 @@ export function MockInterview() {
     setAudioBlob(null);
     setSeconds(0);
     setResult(null);
+    setSessionResults([]);
     setError(null);
   };
+
+  const sessionSummary = useMemo(() => {
+    if (sessionResults.length < 2) return null;
+    const fits = sessionResults.map((r) => r.fit.fit_score);
+    const avgFit = Math.round((fits.reduce((a, b) => a + b, 0) / fits.length) * 10) / 10;
+    return { avgFit, n: sessionResults.length };
+  }, [sessionResults]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -416,24 +425,30 @@ export function MockInterview() {
     return () => window.removeEventListener("keydown", onKey);
   }, [audioBlob, recording, startRecording, stopRecording, submit, submitting]);
 
+  // Unmount cleanup only — do NOT depend on camStream/stopCamera/previewUrl or turning the camera on will re-run cleanup and stop the stream.
   useEffect(() => {
     return () => {
-      stopCamera();
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      camStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
       analyserRef.current?.disconnect();
       audioCtxRef.current?.close().catch(() => {});
       audioStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [stopCamera, previewUrl]);
+  }, []);
 
   return (
     <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="type-h1">Interview room</div>
-          <div className="type-muted mt-1">Press <span className="font-semibold text-zinc-200">Space</span> to record · <span className="font-semibold text-zinc-200">Enter</span> to generate</div>
+          <div className="type-h1">Prep by topic</div>
+          <div className="type-muted mt-1">
+            Drill one technical or behavioral prompt at a time—then review your report.{" "}
+            <span className="text-zinc-600">·</span>{" "}
+            <span className="font-semibold text-zinc-200">Space</span> record ·{" "}
+            <span className="font-semibold text-zinc-200">Enter</span> generate
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="meet-chip">Web</span>
@@ -455,7 +470,7 @@ export function MockInterview() {
         <section className="frame-gradient bg-black shadow-[0_18px_50px_-35px_rgba(0,0,0,0.85)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-4 py-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-zinc-100">Mock interview</p>
+              <p className="truncate text-sm font-semibold text-zinc-100">Topic prep</p>
               <p className="mt-0.5 truncate text-xs text-zinc-500">{question.title}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -472,11 +487,15 @@ export function MockInterview() {
               <span className="meet-chip">
                 <span className="text-zinc-400">Mic</span>
                 <span className="meet-meter" aria-hidden>
-                  <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
+                  <span
+                  className="meet-meter-fill transition-[width] duration-75 ease-out"
+                  style={{ width: `${Math.round(micLevel * 100)}%` }}
+                />
                 </span>
               </span>
-              {recording && inputDetectedStreakMs >= 600 && noInputStreakMs === 0 && <span className="meet-chip">Input detected</span>}
-              {recording && noInputStreakMs >= 1500 && <span className="meet-chip">No input detected</span>}
+              {recording && noInputStreakMs >= 2000 && (
+                <span className="meet-chip border-amber-500/25 text-amber-100/90">Unable to detect microphone input</span>
+              )}
               <span className="meet-chip">{question.track.toUpperCase()}</span>
               <span className="meet-chip">Suggested {formatTime(question.suggestedSeconds)}</span>
             </div>
@@ -522,6 +541,25 @@ export function MockInterview() {
                 style={{ boxShadow: "0 14px 40px -25px rgba(79,70,229,0.55)" }}
               >
                 Recorded
+              </div>
+            )}
+            {snapshotFile && (
+              <div
+                className="absolute right-3 top-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-100"
+                style={{ boxShadow: "0 14px 40px -25px rgba(79,70,229,0.55)" }}
+              >
+                Env frame ready
+              </div>
+            )}
+
+            {submitting && (
+              <div className="evaluate-overlay" role="status" aria-live="polite">
+                <div className="evaluate-orb" aria-hidden>
+                  <span className="evaluate-ring" />
+                  <span className="evaluate-ring-2" />
+                </div>
+                <p className="text-sm font-semibold tracking-tight text-zinc-50">Evaluating</p>
+                <AnalysisProgress variant="mock" className="mx-auto" />
               </div>
             )}
           </div>
@@ -572,18 +610,11 @@ export function MockInterview() {
                     ))}
                   </select>
                 </label>
-                <label className="text-xs font-medium text-zinc-400">
-                  Topic
-                  <select
-                    className="mt-2 w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value as Topic)}
-                  >
-                    <option>M&A</option>
-                    <option>LBO</option>
-                    <option>Valuation</option>
-                  </select>
-                </label>
+                {question.topicHint && (
+                  <p className="text-xs text-zinc-500">
+                    Scoring focus: <span className="font-medium text-zinc-300">{question.topicHint}</span>
+                  </p>
+                )}
               </div>
 
               <details className="mt-4 meet-panel frame-gradient overflow-hidden">
@@ -631,12 +662,11 @@ export function MockInterview() {
               {submitting ? (
                 <div className="meet-section">
                   <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Generating</div>
-                  <div className="mt-3 space-y-3">
-                    <div className="h-8 w-40 rounded-lg bg-white/5" />
+                  <AnalysisProgress variant="mock" className="mt-3" />
+                  <div className="mt-4 space-y-2">
                     <div className="h-2 w-full rounded-full bg-white/5" />
                     <div className="h-2 w-11/12 rounded-full bg-white/5" />
                     <div className="h-2 w-10/12 rounded-full bg-white/5" />
-                    <div className="h-28 w-full rounded-xl bg-white/5" />
                   </div>
                 </div>
               ) : !result ? (
@@ -729,6 +759,15 @@ export function MockInterview() {
                         Copy report
                       </button>
                     </div>
+                    {hasNextQuestion && (
+                      <button
+                        type="button"
+                        className="mt-4 w-full rounded-xl border border-white/15 bg-white px-4 py-3 text-sm font-semibold text-zinc-900 shadow-sm transition hover:bg-zinc-100"
+                        onClick={goNextQuestion}
+                      >
+                        Next question
+                      </button>
+                    )}
                   </div>
 
                   <div className="meet-section">
@@ -760,11 +799,10 @@ export function MockInterview() {
               {submitting ? (
                 <div className="meet-section">
                   <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Generating</div>
-                  <div className="mt-3 space-y-3">
+                  <AnalysisProgress variant="mock" className="mt-3" />
+                  <div className="mt-4 space-y-2">
                     <div className="h-2 w-full rounded-full bg-white/5" />
                     <div className="h-2 w-11/12 rounded-full bg-white/5" />
-                    <div className="h-2 w-10/12 rounded-full bg-white/5" />
-                    <div className="h-2 w-9/12 rounded-full bg-white/5" />
                     <div className="h-2 w-10/12 rounded-full bg-white/5" />
                   </div>
                 </div>
@@ -868,7 +906,10 @@ export function MockInterview() {
                   const f = e.target.files?.[0];
                   if (!f) return;
                   setSnapshotFile(f);
-                  setPreviewUrl(URL.createObjectURL(f));
+                  setPreviewUrl((prev) => {
+                    if (prev) URL.revokeObjectURL(prev);
+                    return URL.createObjectURL(f);
+                  });
                 }}
               />
             </label>
@@ -946,6 +987,23 @@ export function MockInterview() {
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Narrative</p>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
             </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm text-zinc-400">
+            <span>
+              Technical read · <span className="text-zinc-200">{result.technical.expertise_label}</span>{" "}
+              <span className="text-zinc-500">({result.technical.topic})</span>
+            </span>
+            {result.technical.coverage_score != null && result.technical.coverage_score > 0 && (
+              <span className="tabular-nums text-zinc-500">
+                Structure coverage · {Math.round(result.technical.coverage_score)}%
+              </span>
+            )}
+            {result.technical.explanation_score != null && result.technical.explanation_score > 0 && (
+              <span className="tabular-nums text-zinc-500">
+                Causal clarity · {Math.round(result.technical.explanation_score)}%
+              </span>
+            )}
           </div>
 
           <div className="mt-8 rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
@@ -1049,6 +1107,16 @@ export function MockInterview() {
               </ul>
             </div>
           </div>
+        </section>
+      )}
+
+      {sessionSummary && (
+        <section id="session-summary" className="ui-card mx-auto mt-10 max-w-6xl p-6 sm:p-10">
+          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Session summary</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-white">{sessionSummary.avgFit}</p>
+          <p className="mt-1 text-sm text-zinc-500">
+            Average fit score across {sessionSummary.n} completed reports this session.
+          </p>
         </section>
       )}
     </div>
