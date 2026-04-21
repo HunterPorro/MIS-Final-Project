@@ -269,6 +269,19 @@ export function SessionInterview() {
 
   return (
     <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="type-h1">Superday room</div>
+          <div className="type-muted mt-1">Short session · Submit each answer to advance</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="meet-chip">Connected</span>
+          <span className="meet-chip">
+            Q {Math.min(idx + 1, sessionQuestions.length)} / {sessionQuestions.length}
+          </span>
+          <span className="meet-chip">{q?.track?.toUpperCase?.() ?? "—"}</span>
+        </div>
+      </div>
       <div className="mx-auto max-w-3xl text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Superday session</p>
         <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">Session</h2>
@@ -277,7 +290,7 @@ export function SessionInterview() {
         </p>
       </div>
 
-      <div className="meet-panel mt-10 p-6 sm:p-8">
+      <div className="meet-panel frame-gradient mt-10 p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">

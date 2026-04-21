@@ -335,8 +335,19 @@ export function MockInterview() {
 
   return (
     <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="type-h1">Interview room</div>
+          <div className="type-muted mt-1">Press <span className="font-semibold text-zinc-200">Space</span> to record · <span className="font-semibold text-zinc-200">Enter</span> to generate</div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="meet-chip">Connected</span>
+          <span className="meet-chip">{question.track.toUpperCase()}</span>
+          <span className="meet-chip">{question.title}</span>
+        </div>
+      </div>
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <section className="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_18px_50px_-35px_rgba(0,0,0,0.85)]">
+        <section className="frame-gradient bg-black shadow-[0_18px_50px_-35px_rgba(0,0,0,0.85)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-4 py-3">
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-zinc-100">Mock interview</p>
@@ -390,26 +401,26 @@ export function MockInterview() {
           </div>
         </section>
 
-        <aside className="meet-panel">
+        <aside className="meet-panel frame-gradient">
           <div className="flex items-center justify-between gap-3 border-b border-white/5 p-3">
             <div className="flex flex-wrap gap-1">
               <button
                 type="button"
-                className={`meet-tab ${rightTab === "prompt" ? "meet-tab-active" : ""}`}
+                className={`meet-tab pressable ${rightTab === "prompt" ? "meet-tab-active" : ""}`}
                 onClick={() => setRightTab("prompt")}
               >
                 Prompt
               </button>
               <button
                 type="button"
-                className={`meet-tab ${rightTab === "report" ? "meet-tab-active" : ""}`}
+                className={`meet-tab pressable ${rightTab === "report" ? "meet-tab-active" : ""}`}
                 onClick={() => setRightTab("report")}
               >
                 Report
               </button>
               <button
                 type="button"
-                className={`meet-tab ${rightTab === "transcript" ? "meet-tab-active" : ""}`}
+                className={`meet-tab pressable ${rightTab === "transcript" ? "meet-tab-active" : ""}`}
                 onClick={() => setRightTab("transcript")}
               >
                 Transcript
@@ -553,7 +564,7 @@ export function MockInterview() {
         <div className="flex items-center gap-2">
           {!recording ? (
             <div className="group relative">
-              <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} aria-label="Start recording">
+              <button type="button" className="meet-btn meet-btn-primary pressable" onClick={startRecording} aria-label="Start recording">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
@@ -564,7 +575,7 @@ export function MockInterview() {
             </div>
           ) : (
             <div className="group relative">
-              <button type="button" className="meet-btn meet-btn-danger" onClick={stopRecording} aria-label="Stop recording">
+              <button type="button" className="meet-btn meet-btn-danger pressable" onClick={stopRecording} aria-label="Stop recording">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h12v12H6z" />
                 </svg>
@@ -575,7 +586,7 @@ export function MockInterview() {
 
           {!camStream ? (
             <div className="group relative">
-              <button type="button" className="meet-btn" onClick={startCamera} aria-label="Start camera">
+              <button type="button" className="meet-btn pressable" onClick={startCamera} aria-label="Start camera">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14" />
                   <rect x="3" y="7" width="12" height="10" rx="2" ry="2" />
@@ -585,7 +596,7 @@ export function MockInterview() {
             </div>
           ) : (
             <div className="group relative">
-              <button type="button" className="meet-btn" onClick={stopCamera} aria-label="Stop camera">
+              <button type="button" className="meet-btn pressable" onClick={stopCamera} aria-label="Stop camera">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h12a2 2 0 012 2v6a2 2 0 01-2 2H3z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
@@ -619,7 +630,7 @@ export function MockInterview() {
 
           {camStream && (
             <div className="group relative">
-              <button type="button" className="meet-btn" onClick={captureFrame} aria-label="Capture environment frame">
+              <button type="button" className="meet-btn pressable" onClick={captureFrame} aria-label="Capture environment frame">
                 <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h4l2-2h4l2 2h4v12H4z" />
                   <circle cx="12" cy="13" r="3.5" />
@@ -632,7 +643,7 @@ export function MockInterview() {
           <div className="group relative">
             <button
               type="button"
-              className="meet-btn meet-btn-primary"
+              className="meet-btn meet-btn-primary pressable"
               disabled={submitting || !audioBlob}
               onClick={submit}
               aria-busy={submitting}
@@ -651,7 +662,7 @@ export function MockInterview() {
           </div>
 
           <div className="group relative">
-            <button type="button" className="meet-btn" onClick={reset} aria-label="Reset">
+            <button type="button" className="meet-btn pressable" onClick={reset} aria-label="Reset">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 101-4" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v6h6" />
