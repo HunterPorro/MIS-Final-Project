@@ -13,6 +13,15 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+/* Premium background without looking "AI-ish" */
+.app-backdrop {
+  background:
+    radial-gradient(900px 500px at 15% -10%, rgba(59, 130, 246, 0.18), transparent 60%),
+    radial-gradient(700px 420px at 95% 0%, rgba(16, 185, 129, 0.14), transparent 55%),
+    radial-gradient(900px 520px at 50% 110%, rgba(244, 63, 94, 0.10), transparent 55%),
+    linear-gradient(#070708, #0A0A0A 40%, #070708);
+}
+
 ::selection {
   background-color: #FAFAFA;
   color: #0A0A0A;
@@ -21,7 +30,7 @@ body {
 @layer components {
   /* Crisp, solid cards instead of glassy translucent ones */
   .ui-card {
-    @apply rounded-xl border border-zinc-800 bg-[#0F0F11] shadow-sm;
+    @apply rounded-2xl border border-white/10 bg-[#0C0C0E] shadow-[0_18px_50px_-30px_rgba(0,0,0,0.85)];
   }
 
   .ui-card-hover {
@@ -30,7 +39,7 @@ body {
 
   /* Monochromatic sharp native-feeling inputs */
   .ui-input {
-    @apply mt-2 w-full rounded-lg border border-zinc-800 bg-[#0A0A0A] px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-300 focus:bg-[#0F0F11];
+    @apply mt-2 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-white/20 focus:bg-black/55;
   }
 
   .ui-label {
@@ -39,16 +48,16 @@ body {
 
   /* High contrast, stark buttons */
   .ui-btn-primary {
-    @apply inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-semibold tracking-wide text-black shadow-sm transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold tracking-wide text-black shadow-sm transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .ui-btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-transparent px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-transparent px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-white/20 hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /* Meet-style controls */
   .meet-dock {
-    @apply fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-950/80 px-3 py-2 shadow-lg shadow-black/40 backdrop-blur-xl;
+    @apply fixed bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-950/70 px-3 py-2 shadow-[0_20px_60px_-35px_rgba(0,0,0,0.85)] backdrop-blur-xl;
   }
 
   .meet-btn {
@@ -69,6 +78,14 @@ body {
 
   .meet-tab-active {
     @apply bg-white/10 text-white;
+  }
+
+  .meet-chip {
+    @apply inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200;
+  }
+
+  .meet-panel {
+    @apply rounded-2xl border border-white/10 bg-[#0C0C0E] shadow-[0_18px_50px_-30px_rgba(0,0,0,0.85)];
   }
 }
 

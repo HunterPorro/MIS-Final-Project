@@ -217,16 +217,16 @@ export function SessionInterview() {
   }, [reports]);
 
   return (
-    <div className="mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
+    <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="mx-auto max-w-3xl text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Superday session</p>
-        <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">3-question session</h2>
+        <h2 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">Session</h2>
         <p className="mt-4 text-sm leading-relaxed text-zinc-400 sm:text-base">
           Run a short session and get a single aggregated report at the end.
         </p>
       </div>
 
-      <div className="mt-10 ui-card ui-card-hover p-6 sm:p-8">
+      <div className="meet-panel mt-10 p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
@@ -253,7 +253,7 @@ export function SessionInterview() {
             </select>
             <span className="mt-2 block text-xs text-zinc-500">Auto-set for technical prompts; adjustable for behavioral.</span>
           </label>
-          <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+          <div className="rounded-2xl border border-white/10 bg-black/35 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Recording</p>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 text-sm text-zinc-300">

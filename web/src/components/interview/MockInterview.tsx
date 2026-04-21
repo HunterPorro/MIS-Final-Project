@@ -256,22 +256,27 @@ export function MockInterview() {
   }, [stopCamera, previewUrl]);
 
   return (
-    <div className="mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
+    <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <section className="overflow-hidden rounded-2xl border border-zinc-800 bg-black shadow-sm">
-          <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
+        <section className="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_18px_50px_-35px_rgba(0,0,0,0.85)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 px-4 py-3">
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-zinc-100">{question.title}</p>
-              <p className="mt-0.5 truncate text-xs text-zinc-500">
-                {question.track.toUpperCase()} · Suggested {formatTime(question.suggestedSeconds)}
-              </p>
+              <p className="truncate text-sm font-semibold text-zinc-100">Mock interview</p>
+              <p className="mt-0.5 truncate text-xs text-zinc-500">{question.title}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`}
-                aria-hidden
-              />
-              <span className="text-xs tabular-nums text-zinc-400">{formatTime(seconds)}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="meet-chip">
+                <span
+                  className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`}
+                  aria-hidden
+                />
+                {recording ? "Recording" : "Ready"}
+              </span>
+              <span className="meet-chip">
+                <span className="tabular-nums">{formatTime(seconds)}</span>
+              </span>
+              <span className="meet-chip">{question.track.toUpperCase()}</span>
+              <span className="meet-chip">Suggested {formatTime(question.suggestedSeconds)}</span>
             </div>
           </div>
 
@@ -301,7 +306,7 @@ export function MockInterview() {
           </div>
         </section>
 
-        <aside className="rounded-2xl border border-zinc-800 bg-[#0F0F11] shadow-sm">
+        <aside className="meet-panel">
           <div className="flex items-center justify-between gap-3 border-b border-white/5 p-3">
             <div className="flex flex-wrap gap-1">
               <button
@@ -326,7 +331,7 @@ export function MockInterview() {
                 Transcript
               </button>
             </div>
-            <div className="text-xs text-zinc-500">{result ? `Fit ${result.fit.fit_score}` : "No report"}</div>
+            <div className="text-xs text-zinc-500">{result ? `Fit ${result.fit.fit_score}` : "—"}</div>
           </div>
 
           {rightTab === "prompt" && (
@@ -370,12 +375,12 @@ export function MockInterview() {
           {rightTab === "report" && (
             <div className="p-4">
               {!result ? (
-                <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-400">
+                <div className="rounded-2xl border border-white/10 bg-black/35 p-4 text-sm text-zinc-300">
                   Record an answer, then generate a report.
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                  <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
                     <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Summary</div>
                     <div className="mt-2 text-4xl font-semibold text-white">{result.fit.fit_score}</div>
                     <div className="mt-1 text-xs text-zinc-500">
@@ -383,7 +388,7 @@ export function MockInterview() {
                       {result.behavioral.score}
                     </div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                  <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
                     <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Narrative</div>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
                   </div>
@@ -395,11 +400,11 @@ export function MockInterview() {
           {rightTab === "transcript" && (
             <div className="p-4">
               {!result ? (
-                <div className="rounded-xl border border-white/10 bg-black/40 p-4 text-sm text-zinc-400">
+                <div className="rounded-2xl border border-white/10 bg-black/35 p-4 text-sm text-zinc-300">
                   Transcript appears after you generate a report.
                 </div>
               ) : (
-                <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+                <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
                   <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Transcript</div>
                   <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
                 </div>
