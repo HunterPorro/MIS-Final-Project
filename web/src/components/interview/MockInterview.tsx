@@ -119,6 +119,11 @@ export function MockInterview() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const tickRef = useRef<number | undefined>(undefined);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [micLevel, setMicLevel] = useState(0); // 0..1
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -174,6 +179,20 @@ export function MockInterview() {
     setSeconds(0);
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioStreamRef.current = s;
+
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(s);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.85;
+      src.connect(analyser);
+      analyserRef.current = analyser;
+
       const rec = new MediaRecorder(s);
       recorderRef.current = rec;
       chunksRef.current = [];
@@ -187,6 +206,26 @@ export function MockInterview() {
       setRecording(true);
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
       tickRef.current = window.setInterval(() => setSeconds((v) => v + 1), 1000);
+
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const loop = () => {
+        const a = analyserRef.current;
+        if (!a) return;
+        a.getByteTimeDomainData(data);
+        // RMS of centered waveform
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const x = (data[i]! - 128) / 128;
+          sum += x * x;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        // map to 0..1 with a bit of gain
+        const level = Math.min(1, rms * 3.2);
+        setMicLevel(level);
+        rafRef.current = window.requestAnimationFrame(loop);
+      };
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = window.requestAnimationFrame(loop);
     } catch {
       setError("Mic access denied or unavailable.");
     }
@@ -205,6 +244,17 @@ export function MockInterview() {
     if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
     tickRef.current = undefined;
     setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
+    setMicLevel(0);
+    if (rafRef.current) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
   };
 
   const submit = async () => {
@@ -248,10 +298,38 @@ export function MockInterview() {
   };
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = (target?.tagName || "").toLowerCase();
+      const isTypingTarget = tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable;
+      if (isTypingTarget) return;
+
+      if (e.key === " ") {
+        e.preventDefault();
+        if (recording) stopRecording();
+        else startRecording();
+      }
+      if (e.key === "Enter") {
+        if (!recording && audioBlob && !submitting) submit();
+      }
+      if (e.key === "Escape") {
+        if (recording) stopRecording();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [audioBlob, recording, startRecording, stopRecording, submit, submitting]);
+
+  useEffect(() => {
     return () => {
       stopCamera();
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      analyserRef.current?.disconnect();
+      audioCtxRef.current?.close().catch(() => {});
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, [stopCamera, previewUrl]);
 
@@ -274,6 +352,12 @@ export function MockInterview() {
               </span>
               <span className="meet-chip">
                 <span className="tabular-nums">{formatTime(seconds)}</span>
+              </span>
+              <span className="meet-chip">
+                <span className="text-zinc-400">Mic</span>
+                <span className="meet-meter" aria-hidden>
+                  <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
+                </span>
               </span>
               <span className="meet-chip">{question.track.toUpperCase()}</span>
               <span className="meet-chip">Suggested {formatTime(question.suggestedSeconds)}</span>
@@ -417,89 +501,113 @@ export function MockInterview() {
       <div className="meet-dock">
         <div className="flex items-center gap-2">
           {!recording ? (
-            <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} aria-label="Start recording">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
-              </svg>
-            </button>
+            <div className="group relative">
+              <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} aria-label="Start recording">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Record (Space)</span>
+            </div>
           ) : (
-            <button type="button" className="meet-btn meet-btn-danger" onClick={stopRecording} aria-label="Stop recording">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h12v12H6z" />
-              </svg>
-            </button>
+            <div className="group relative">
+              <button type="button" className="meet-btn meet-btn-danger" onClick={stopRecording} aria-label="Stop recording">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h12v12H6z" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Stop (Space)</span>
+            </div>
           )}
 
           {!camStream ? (
-            <button type="button" className="meet-btn" onClick={startCamera} aria-label="Start camera">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14" />
-                <rect x="3" y="7" width="12" height="10" rx="2" ry="2" />
-              </svg>
-            </button>
+            <div className="group relative">
+              <button type="button" className="meet-btn" onClick={startCamera} aria-label="Start camera">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14" />
+                  <rect x="3" y="7" width="12" height="10" rx="2" ry="2" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Camera</span>
+            </div>
           ) : (
-            <button type="button" className="meet-btn" onClick={stopCamera} aria-label="Stop camera">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h12a2 2 0 012 2v6a2 2 0 01-2 2H3z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
-              </svg>
-            </button>
+            <div className="group relative">
+              <button type="button" className="meet-btn" onClick={stopCamera} aria-label="Stop camera">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h12a2 2 0 012 2v6a2 2 0 01-2 2H3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Camera off</span>
+            </div>
           )}
 
-          <label className="meet-btn cursor-pointer" aria-label="Upload environment frame">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l5-5 5 5" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14" />
-            </svg>
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setSnapshotFile(f);
-                setPreviewUrl(URL.createObjectURL(f));
-              }}
-            />
-          </label>
+          <div className="group relative">
+            <label className="meet-btn cursor-pointer" aria-label="Upload environment frame">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 10l5-5 5 5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14" />
+              </svg>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  setSnapshotFile(f);
+                  setPreviewUrl(URL.createObjectURL(f));
+                }}
+              />
+            </label>
+            <span className="meet-tooltip">Upload frame</span>
+          </div>
 
           {camStream && (
-            <button type="button" className="meet-btn" onClick={captureFrame} aria-label="Capture environment frame">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h4l2-2h4l2 2h4v12H4z" />
-                <circle cx="12" cy="13" r="3.5" />
-              </svg>
-            </button>
+            <div className="group relative">
+              <button type="button" className="meet-btn" onClick={captureFrame} aria-label="Capture environment frame">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h4l2-2h4l2 2h4v12H4z" />
+                  <circle cx="12" cy="13" r="3.5" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Capture</span>
+            </div>
           )}
 
-          <button
-            type="button"
-            className="meet-btn meet-btn-primary"
-            disabled={submitting || !audioBlob}
-            onClick={submit}
-            aria-busy={submitting}
-            aria-label="Generate report"
-          >
-            {submitting ? (
-              <Spinner />
-            ) : (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 12h12" />
-              </svg>
-            )}
-          </button>
+          <div className="group relative">
+            <button
+              type="button"
+              className="meet-btn meet-btn-primary"
+              disabled={submitting || !audioBlob}
+              onClick={submit}
+              aria-busy={submitting}
+              aria-label="Generate report"
+            >
+              {submitting ? (
+                <Spinner />
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 12h12" />
+                </svg>
+              )}
+            </button>
+            <span className="meet-tooltip">Generate (Enter)</span>
+          </div>
 
-          <button type="button" className="meet-btn" onClick={reset} aria-label="Reset">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 101-4" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v6h6" />
-            </svg>
-          </button>
+          <div className="group relative">
+            <button type="button" className="meet-btn" onClick={reset} aria-label="Reset">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 101-4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v6h6" />
+              </svg>
+            </button>
+            <span className="meet-tooltip">Reset</span>
+          </div>
         </div>
         {error && (
           <div className="mt-2 max-w-[420px] rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">

@@ -87,6 +87,18 @@ body {
   .meet-panel {
     @apply rounded-2xl border border-white/10 bg-[#0C0C0E] shadow-[0_18px_50px_-30px_rgba(0,0,0,0.85)];
   }
+
+  .meet-tooltip {
+    @apply pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/10 bg-zinc-950/90 px-3 py-1.5 text-[11px] font-semibold text-zinc-100 opacity-0 shadow-lg shadow-black/30 backdrop-blur-lg transition group-hover:opacity-100;
+  }
+
+  .meet-meter {
+    @apply h-1.5 w-20 overflow-hidden rounded-full border border-white/10 bg-white/5;
+  }
+
+  .meet-meter-fill {
+    @apply h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-fuchsia-400;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

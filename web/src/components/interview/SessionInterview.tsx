@@ -113,6 +113,11 @@ export function SessionInterview() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const tickRef = useRef<number | undefined>(undefined);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [micLevel, setMicLevel] = useState(0); // 0..1
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -125,6 +130,20 @@ export function SessionInterview() {
     setSeconds(0);
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      audioStreamRef.current = s;
+
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      audioCtxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(s);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.85;
+      src.connect(analyser);
+      analyserRef.current = analyser;
+
       const rec = new MediaRecorder(s);
       recorderRef.current = rec;
       chunksRef.current = [];
@@ -136,6 +155,23 @@ export function SessionInterview() {
       setRecording(true);
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
       tickRef.current = window.setInterval(() => setSeconds((v) => v + 1), 1000);
+
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const loop = () => {
+        const a = analyserRef.current;
+        if (!a) return;
+        a.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+          const x = (data[i]! - 128) / 128;
+          sum += x * x;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        setMicLevel(Math.min(1, rms * 3.2));
+        rafRef.current = window.requestAnimationFrame(loop);
+      };
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = window.requestAnimationFrame(loop);
     } catch {
       setError("Mic access denied or unavailable.");
     }
@@ -154,6 +190,17 @@ export function SessionInterview() {
     if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
     tickRef.current = undefined;
     setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
+    setMicLevel(0);
+    if (rafRef.current) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    analyserRef.current?.disconnect();
+    analyserRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    audioStreamRef.current?.getTracks().forEach((t) => t.stop());
+    audioStreamRef.current = null;
   };
 
   const submitAnswer = async () => {
@@ -196,6 +243,10 @@ export function SessionInterview() {
   useEffect(() => {
     return () => {
       if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
+      if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
+      analyserRef.current?.disconnect();
+      audioCtxRef.current?.close().catch(() => {});
+      audioStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -259,6 +310,9 @@ export function SessionInterview() {
               <div className="flex items-center gap-3 text-sm text-zinc-300">
                 <span className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`} aria-hidden />
                 <span className="tabular-nums">{formatTime(seconds)}</span>
+                <span className="meet-meter" aria-hidden>
+                  <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
+                </span>
                 {audioBlob ? <span className="text-emerald-400">Recorded</span> : <span className="text-zinc-500">Not recorded</span>}
               </div>
             </div>
@@ -327,45 +381,57 @@ export function SessionInterview() {
       <div className="meet-dock">
         <div className="flex items-center gap-2">
           {!recording ? (
-            <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} disabled={done} aria-label="Start recording">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
-              </svg>
-            </button>
+            <div className="group relative">
+              <button type="button" className="meet-btn meet-btn-primary" onClick={startRecording} disabled={done} aria-label="Start recording">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 003-3V6a3 3 0 00-6 0v6a3 3 0 003 3z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 01-14 0" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Record</span>
+            </div>
           ) : (
-            <button type="button" className="meet-btn meet-btn-danger" onClick={stopRecording} aria-label="Stop recording">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h12v12H6z" />
-              </svg>
-            </button>
+            <div className="group relative">
+              <button type="button" className="meet-btn meet-btn-danger" onClick={stopRecording} aria-label="Stop recording">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h12v12H6z" />
+                </svg>
+              </button>
+              <span className="meet-tooltip">Stop</span>
+            </div>
           )}
 
-          <button
-            type="button"
-            className="meet-btn meet-btn-primary"
-            onClick={submitAnswer}
-            disabled={done || submitting || !audioBlob}
-            aria-busy={submitting}
-            aria-label="Submit answer"
-          >
-            {submitting ? (
-              <span className="text-xs font-semibold">…</span>
-            ) : (
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7" />
-              </svg>
-            )}
-          </button>
+          <div className="group relative">
+            <button
+              type="button"
+              className="meet-btn meet-btn-primary"
+              onClick={submitAnswer}
+              disabled={done || submitting || !audioBlob}
+              aria-busy={submitting}
+              aria-label="Submit answer"
+            >
+              {submitting ? (
+                <span className="text-xs font-semibold">…</span>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7" />
+                </svg>
+              )}
+            </button>
+            <span className="meet-tooltip">Submit</span>
+          </div>
 
-          <button type="button" className="meet-btn" onClick={reset} aria-label="Reset session">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 101-4" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v6h6" />
-            </svg>
-          </button>
+          <div className="group relative">
+            <button type="button" className="meet-btn" onClick={reset} aria-label="Reset session">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 12a9 9 0 101-4" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4v6h6" />
+              </svg>
+            </button>
+            <span className="meet-tooltip">Reset</span>
+          </div>
         </div>
         {error && (
           <div className="mt-2 max-w-[420px] rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">
