@@ -97,7 +97,19 @@ body {
   }
 
   .meet-meter-fill {
-    @apply h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-fuchsia-400;
+    @apply h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-sky-200;
+  }
+
+  .meet-section {
+    @apply rounded-2xl border border-white/10 bg-black/35 p-4;
+  }
+
+  .meet-kpi {
+    @apply text-4xl font-semibold tracking-tight text-white;
+  }
+
+  .meet-subtle {
+    @apply text-xs text-zinc-500;
   }
 }
 

@@ -459,22 +459,58 @@ export function MockInterview() {
           {rightTab === "report" && (
             <div className="p-4">
               {!result ? (
-                <div className="rounded-2xl border border-white/10 bg-black/35 p-4 text-sm text-zinc-300">
+                <div className="meet-section text-sm text-zinc-300">
                   Record an answer, then generate a report.
                 </div>
               ) : (
                 <div className="grid gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
+                  <div className="meet-section">
                     <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Summary</div>
-                    <div className="mt-2 text-4xl font-semibold text-white">{result.fit.fit_score}</div>
-                    <div className="mt-1 text-xs text-zinc-500">
-                      Env {result.fit.environment_component} · Tech {result.fit.technical_component} · Beh{" "}
-                      {result.behavioral.score}
+                    <div className="mt-2 flex items-end justify-between gap-4">
+                      <div className="meet-kpi">{result.fit.fit_score}</div>
+                      <div className="text-right">
+                        <div className="meet-subtle">Fit score</div>
+                        <div className="meet-subtle">Env · Tech · Beh</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-3">
+                      {[
+                        { label: "Environment", v: result.fit.environment_component, tone: "bg-emerald-400/70" },
+                        { label: "Technical", v: result.fit.technical_component, tone: "bg-sky-400/70" },
+                        { label: "Behavioral", v: result.behavioral.score, tone: "bg-violet-400/70" },
+                      ].map((row) => (
+                        <div key={row.label}>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-zinc-200">{row.label}</span>
+                            <span className="tabular-nums text-zinc-400">{row.v}</span>
+                          </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full border border-white/10 bg-white/5">
+                            <div className={`h-full rounded-full ${row.tone}`} style={{ width: `${Math.max(0, Math.min(100, row.v))}%` }} />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                    <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Narrative</div>
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
+
+                  <div className="meet-section">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Narrative</div>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(result.narrative);
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
                   </div>
                 </div>
               )}
@@ -484,13 +520,28 @@ export function MockInterview() {
           {rightTab === "transcript" && (
             <div className="p-4">
               {!result ? (
-                <div className="rounded-2xl border border-white/10 bg-black/35 p-4 text-sm text-zinc-300">
+                <div className="meet-section text-sm text-zinc-300">
                   Transcript appears after you generate a report.
                 </div>
               ) : (
-                <div className="rounded-2xl border border-white/10 bg-black/35 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Transcript</div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
+                <div className="meet-section">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Transcript</div>
+                    <button
+                      type="button"
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(result.transcript);
+                        } catch {
+                          // ignore
+                        }
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
                 </div>
               )}
             </div>

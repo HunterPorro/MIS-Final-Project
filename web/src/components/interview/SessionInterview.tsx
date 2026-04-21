@@ -333,26 +333,26 @@ export function SessionInterview() {
         <section className="ui-card mx-auto mt-10 max-w-6xl p-6 sm:p-10">
           <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Session report</p>
           <div className="mt-4 grid gap-6 sm:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <div className="meet-section">
               <div className="text-xs text-zinc-500">Avg Fit</div>
               <div className="mt-2 text-3xl font-semibold text-white">{summary.avgFit}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <div className="meet-section">
               <div className="text-xs text-zinc-500">Avg Technical</div>
               <div className="mt-2 text-3xl font-semibold text-white">{summary.avgTech}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <div className="meet-section">
               <div className="text-xs text-zinc-500">Avg Behavioral</div>
               <div className="mt-2 text-3xl font-semibold text-white">{summary.avgBeh}</div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <div className="meet-section">
               <div className="text-xs text-zinc-500">Avg Environment</div>
               <div className="mt-2 text-3xl font-semibold text-white">{summary.avgEnv}</div>
             </div>
           </div>
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <div className="meet-section">
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Top technical gaps</p>
               <ul className="mt-3 space-y-2 text-sm text-amber-200/90">
                 {summary.topGaps.length ? summary.topGaps.map((s) => (
@@ -363,7 +363,7 @@ export function SessionInterview() {
                 )) : <li className="text-zinc-500">None flagged.</li>}
               </ul>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <div className="meet-section">
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Top behavioral coaching</p>
               <ul className="mt-3 space-y-2 text-sm text-zinc-300">
                 {summary.topCoaching.length ? summary.topCoaching.map((s) => (
