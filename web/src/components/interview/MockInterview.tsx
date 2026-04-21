@@ -84,6 +84,9 @@ async function blobWebmToWav(webm: Blob): Promise<Blob> {
 
 async function parseError(res: Response): Promise<string> {
   const t = await res.text();
+  if (t.includes("Vercel Security Checkpoint") || t.includes("vercel.link/security-checkpoint")) {
+    return "Backend request was blocked by Vercel Security Checkpoint. Fix: set NEXT_PUBLIC_USE_PROXY=1 and set BACKEND_URL to your external FastAPI host (Render/Railway/Fly/VM), not your Vercel domain.";
+  }
   try {
     const j = JSON.parse(t) as { detail?: unknown };
     if (typeof j.detail === "string") return j.detail;
@@ -109,6 +112,7 @@ export function MockInterview() {
 
   // optional environment snapshot
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
   const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -149,31 +153,40 @@ export function MockInterview() {
     setCamStream(null);
   }, [camStream]);
 
+  const videoRefCb = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    setVideoEl(el);
+  }, []);
+
   useEffect(() => {
-    const v = videoRef.current;
+    const v = videoEl;
     if (!v) return;
     if (!camStream) {
-      // ensure old stream detaches
       v.srcObject = null;
       return;
     }
-    // Attach stream after the <video> mounts (state update renders later)
     v.srcObject = camStream;
-    v.play().catch(() => {
-      // Autoplay can still be blocked in some contexts; user can retry via the camera button.
-    });
-  }, [camStream]);
+    const play = () => v.play().catch(() => {});
+    // Some browsers need metadata before play() succeeds.
+    v.onloadedmetadata = play;
+    play();
+    return () => {
+      v.onloadedmetadata = null;
+    };
+  }, [camStream, videoEl]);
 
   const startCamera = async () => {
     setError(null);
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: 1280, height: 720 },
+        video: { facingMode: "user" },
         audio: false,
       });
       setCamStream(s);
-    } catch {
-      setError("Camera access denied or unavailable.");
+    } catch (e) {
+      const msg =
+        e instanceof Error && e.message ? `Camera error: ${e.message}` : "Camera access denied or unavailable.";
+      setError(msg);
     }
   };
 
@@ -448,7 +461,7 @@ export function MockInterview() {
 
           <div className="relative aspect-video w-full bg-zinc-950">
             {camStream ? (
-              <video ref={videoRef} className="h-full w-full object-cover" playsInline muted />
+              <video ref={videoRefCb} className="h-full w-full object-cover" playsInline muted />
             ) : previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={previewUrl} alt="Environment preview" className="h-full w-full object-cover" />
