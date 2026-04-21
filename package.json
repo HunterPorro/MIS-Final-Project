@@ -5,7 +5,7 @@
     "web"
   ],
   "scripts": {
-    "dev:api": "cross-env PYTHONPATH=. python -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:api": "bash -lc 'source .venv/bin/activate && PYTHONPATH=. python -m uvicorn api.main:app --reload --host 127.0.0.1 --port 8000'",
     "dev:web": "cross-env BACKEND_URL=http://127.0.0.1:8000 NEXT_PUBLIC_USE_PROXY=1 npm run dev --prefix web -- --hostname 127.0.0.1 --port 3000",
     "dev": "concurrently -k -n api,web -c blue,magenta \"npm run dev:api\" \"npm run dev:web\""
   },
