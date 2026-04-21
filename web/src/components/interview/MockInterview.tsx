@@ -129,6 +129,7 @@ export function MockInterview() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MockInterviewResponse | null>(null);
+  const [apiOk, setApiOk] = useState<boolean | null>(null);
 
   const downloadJson = useCallback((filename: string, value: unknown) => {
     const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
@@ -147,6 +148,21 @@ export function MockInterview() {
     setCamStream(null);
   }, [camStream]);
 
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (!camStream) {
+      // ensure old stream detaches
+      v.srcObject = null;
+      return;
+    }
+    // Attach stream after the <video> mounts (state update renders later)
+    v.srcObject = camStream;
+    v.play().catch(() => {
+      // Autoplay can still be blocked in some contexts; user can retry via the camera button.
+    });
+  }, [camStream]);
+
   const startCamera = async () => {
     setError(null);
     try {
@@ -155,10 +171,6 @@ export function MockInterview() {
         audio: false,
       });
       setCamStream(s);
-      if (videoRef.current) {
-        videoRef.current.srcObject = s;
-        await videoRef.current.play();
-      }
     } catch {
       setError("Camera access denied or unavailable.");
     }
@@ -288,18 +300,47 @@ export function MockInterview() {
       fd.append("question_track", question.track);
       fd.append("audio_wav", new File([wav], "answer.wav", { type: "audio/wav" }));
       if (snapshotFile) fd.append("image", snapshotFile);
-      const res = await fetch(apiUrl("/mock-interview"), { method: "POST", body: fd });
+      const ctrl = new AbortController();
+      const t = window.setTimeout(() => ctrl.abort(), 120_000);
+      const res = await fetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
+      window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
       const data = (await res.json()) as MockInterviewResponse;
       setResult(data);
       setRightTab("report");
       document.getElementById("report")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed");
+      const msg =
+        e instanceof Error
+          ? e.name === "AbortError"
+            ? "Request timed out. Check your backend host and try again."
+            : e.message
+          : "Request failed";
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const res = await fetch(apiUrl("/health"), { method: "GET" });
+        if (cancelled) return;
+        setApiOk(res.ok);
+      } catch {
+        if (cancelled) return;
+        setApiOk(false);
+      }
+    };
+    run();
+    const id = window.setInterval(run, 25_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const reset = () => {
     stopCamera();
@@ -356,7 +397,17 @@ export function MockInterview() {
           <div className="type-muted mt-1">Press <span className="font-semibold text-zinc-200">Space</span> to record · <span className="font-semibold text-zinc-200">Enter</span> to generate</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="meet-chip">Connected</span>
+          <span className="meet-chip">Web</span>
+          <span className="meet-chip">
+            API{" "}
+            {apiOk === null ? (
+              <span className="text-zinc-500">…</span>
+            ) : apiOk ? (
+              <span className="text-zinc-200">OK</span>
+            ) : (
+              <span className="text-amber-200/90">Down</span>
+            )}
+          </span>
           <span className="meet-chip">{question.track.toUpperCase()}</span>
           <span className="meet-chip">{question.title}</span>
         </div>
