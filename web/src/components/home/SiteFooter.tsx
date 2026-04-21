@@ -1,11 +1,11 @@
 export function SiteFooter() {
   return (
-    <footer className="border-t border-zinc-800 bg-[#0A0A0A] print:hidden">
+    <footer className="border-t border-white/5 bg-black/20 print:hidden">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-2 font-semibold text-white">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-800 text-sm font-bold text-white ring-1 ring-zinc-700">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/5 text-sm font-bold text-white ring-1 ring-white/10">
                 FR
               </span>
               Final Round
@@ -16,26 +16,21 @@ export function SiteFooter() {
           </div>
           <div className="grid grid-cols-2 gap-10 sm:gap-16">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Jump</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Product</p>
               <ul className="mt-3 space-y-2 text-sm">
                 <li>
-                  <a href="#overview" className="text-zinc-400 hover:text-white">
-                    Overview
+                  <a href="/interview" className="text-zinc-400 hover:text-white">
+                    Mock interview
+                  </a>
+                </li>
+                <li>
+                  <a href="/superday" className="text-zinc-400 hover:text-white">
+                    Superday session
                   </a>
                 </li>
                 <li>
                   <a href="#how-it-works" className="text-zinc-400 hover:text-white">
                     How it works
-                  </a>
-                </li>
-                <li>
-                  <a href="#tips" className="text-zinc-400 hover:text-white">
-                    Tips
-                  </a>
-                </li>
-                <li>
-                  <a href="#assessment" className="text-zinc-400 hover:text-white">
-                    Assessment
                   </a>
                 </li>
               </ul>

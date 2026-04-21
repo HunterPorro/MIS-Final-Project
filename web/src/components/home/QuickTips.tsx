@@ -6,10 +6,10 @@ export function QuickTips() {
       aria-labelledby="tips-heading"
     >
       <div className="mx-auto max-w-3xl px-4 sm:px-6">
-        <details className="group ui-card overflow-hidden border-zinc-800 open:border-zinc-600 bg-[#0A0A0A]">
+        <details className="group meet-panel frame-gradient overflow-hidden">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-5 font-medium text-white marker:content-none [&::-webkit-details-marker]:hidden">
             <span id="tips-heading" className="flex items-center gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0F0F11] ring-1 ring-zinc-800">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 ring-1 ring-white/10">
                 <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
                   <path
                     strokeLinecap="round"
@@ -31,8 +31,8 @@ export function QuickTips() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </summary>
-          <div className="border-t border-zinc-800 bg-[#0F0F11] px-6 pb-6 pt-4">
-            <ul className="space-y-4 text-sm leading-relaxed text-zinc-400">
+          <div className="border-t border-white/5 bg-black/35 px-6 pb-6 pt-4">
+            <ul className="space-y-4 text-sm leading-relaxed text-zinc-300">
               <li className="flex gap-3 text-zinc-400">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white" aria-hidden />
                 <span>
