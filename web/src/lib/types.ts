@@ -23,3 +23,7 @@ export type AssessResponse = {
   };
   narrative: string;
 };
+
+export type MockInterviewResponse = AssessResponse & {
+  transcript: string;
+};

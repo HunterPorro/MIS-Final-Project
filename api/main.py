@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import settings
 from api.routers import assess
+from api.routers import mock_interview
 from api.services.runtime_models import preload
 
 
@@ -30,6 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(assess.router, prefix="")
+app.include_router(mock_interview.router, prefix="")
 
 
 @app.get("/health")

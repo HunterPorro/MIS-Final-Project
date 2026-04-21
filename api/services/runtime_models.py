@@ -6,12 +6,14 @@ from pathlib import Path
 import torch
 
 from api.config import settings
+from api.ml.asr import ASRTranscriber
 from api.ml.technical_infer import TechnicalAnalyzer
 from api.ml.workspace_infer import WorkspaceClassifier
 
 _lock = threading.Lock()
 _workspace: WorkspaceClassifier | None = None
 _technical: TechnicalAnalyzer | None = None
+_asr: ASRTranscriber | None = None
 
 
 def workspace_path() -> Path:
@@ -48,6 +50,15 @@ def get_technical() -> TechnicalAnalyzer:
         return _technical
 
 
+def get_asr() -> ASRTranscriber:
+    global _asr
+    with _lock:
+        if _asr is None:
+            # Keep this small for local dev. Upgrade to whisper-small later if desired.
+            _asr = ASRTranscriber(model_name="openai/whisper-tiny")
+        return _asr
+
+
 def preload() -> None:
     """Warm caches if models exist."""
     try:
@@ -58,3 +69,4 @@ def preload() -> None:
         get_technical()
     except FileNotFoundError:
         pass
+    # ASR is optional and large; don't preload by default.

@@ -64,3 +64,11 @@ export async function POST(
   const { path = [] } = await context.params;
   return proxy(request, path);
 }
+
+export async function OPTIONS(
+  request: NextRequest,
+  context: { params: Promise<{ path?: string[] }> },
+) {
+  const { path = [] } = await context.params;
+  return proxy(request, path);
+}

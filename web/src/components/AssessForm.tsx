@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AssessResponse, Topic } from "@/lib/types";
+import type { MockInterviewResponse, Topic } from "@/lib/types";
 import { apiUrl } from "@/lib/api";
 
 type ApiHealth = {
@@ -52,6 +52,64 @@ async function parseErrorMessage(res: Response): Promise<string> {
 const MIN_ANSWER_CHARS = 10;
 const MAX_ANSWER_CHARS = 12000;
 
+function encodeWavMonoPCM16(audioBuffer: AudioBuffer): Blob {
+  const numChannels = audioBuffer.numberOfChannels;
+  const length = audioBuffer.length;
+  const sampleRate = audioBuffer.sampleRate;
+
+  const mono = new Float32Array(length);
+  for (let ch = 0; ch < numChannels; ch++) {
+    const data = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) mono[i] += data[i] / numChannels;
+  }
+
+  const bytesPerSample = 2;
+  const blockAlign = bytesPerSample * 1;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let o = 44;
+  for (let i = 0; i < length; i++) {
+    const s = Math.max(-1, Math.min(1, mono[i] ?? 0));
+    view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    o += 2;
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function blobWebmToWav(webm: Blob): Promise<Blob> {
+  const arrayBuf = await webm.arrayBuffer();
+  const AudioCtx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const ctx = new AudioCtx();
+  const audioBuf = await ctx.decodeAudioData(arrayBuf.slice(0));
+  const wav = encodeWavMonoPCM16(audioBuf);
+  await ctx.close();
+  return wav;
+}
+
 function friendlyError(status: number, message: string): string {
   if (status === 503) {
     return `${message} Train models with ./scripts/train_all.sh (see README) and ensure the API can load models/workspace/ and models/technical/.`;
@@ -66,12 +124,17 @@ export function AssessForm() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [topic, setTopic] = useState<Topic>("M&A");
-  const [answer, setAnswer] = useState("");
   const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recordedSeconds, setRecordedSeconds] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const tickRef = useRef<number | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AssessResponse | null>(null);
+  const [result, setResult] = useState<MockInterviewResponse | null>(null);
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
@@ -108,6 +171,7 @@ export function AssessForm() {
   useEffect(() => {
     return () => {
       if (copyTimerRef.current !== undefined) window.clearTimeout(copyTimerRef.current);
+      if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
     };
   }, []);
 
@@ -132,6 +196,48 @@ export function AssessForm() {
     } catch {
       setError("Camera access denied or unavailable. Upload an image instead.");
     }
+  };
+
+  const startRecording = async () => {
+    setError(null);
+    setAudioBlob(null);
+    setRecordedSeconds(0);
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const rec = new MediaRecorder(s);
+      recorderRef.current = rec;
+      chunksRef.current = [];
+
+      rec.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      rec.onstop = () => {
+        s.getTracks().forEach((t) => t.stop());
+      };
+
+      rec.start();
+      setRecording(true);
+      if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
+      tickRef.current = window.setInterval(() => setRecordedSeconds((v) => v + 1), 1000);
+    } catch {
+      setError("Mic access denied or unavailable.");
+    }
+  };
+
+  const stopRecording = () => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    try {
+      rec.stop();
+    } catch {
+      // ignore
+    }
+    recorderRef.current = null;
+    setRecording(false);
+    if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
+    tickRef.current = undefined;
+    const webm = new Blob(chunksRef.current, { type: "audio/webm" });
+    setAudioBlob(webm);
   };
 
   const captureFrame = () => {
@@ -166,21 +272,18 @@ export function AssessForm() {
     e.preventDefault();
     setError(null);
     setResult(null);
-    if (!snapshotFile) {
-      setError("Add a webcam snapshot or upload an image.");
-      return;
-    }
-    if (answer.trim().length < MIN_ANSWER_CHARS) {
-      setError(`Write at least ${MIN_ANSWER_CHARS}+ characters for your technical answer.`);
+    if (!audioBlob) {
+      setError("Record your answer (audio) before submitting.");
       return;
     }
     setLoading(true);
     try {
+      const wav = await blobWebmToWav(audioBlob);
       const fd = new FormData();
       fd.append("topic", topic);
-      fd.append("answer_text", answer.trim());
-      fd.append("image", snapshotFile);
-      const res = await fetch(apiUrl("/assess"), {
+      fd.append("audio_wav", new File([wav], "answer.wav", { type: "audio/wav" }));
+      if (snapshotFile) fd.append("image", snapshotFile);
+      const res = await fetch(apiUrl("/mock-interview"), {
         method: "POST",
         body: fd,
       });
@@ -188,7 +291,7 @@ export function AssessForm() {
         const raw = await parseErrorMessage(res);
         throw new Error(friendlyError(res.status, raw));
       }
-      const data = (await res.json()) as AssessResponse;
+      const data = (await res.json()) as MockInterviewResponse;
       setResult(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Request failed");
@@ -235,7 +338,8 @@ export function AssessForm() {
     setResult(null);
     setError(null);
     setCopyFeedback(null);
-    setAnswer("");
+    setAudioBlob(null);
+    setRecordedSeconds(0);
     setTopic("M&A");
     requestAnimationFrame(() => {
       document.getElementById("assessment-heading")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -249,10 +353,11 @@ export function AssessForm() {
       <div className="mb-10 text-center print:hidden">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Assessment</p>
         <h2 id="assessment-heading" className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Run your readiness check
+          Start a mock HireVue interview
         </h2>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
-          Capture your environment once, answer in your own words, and get a Fit Score with narrative feedback.
+          Record one take. We transcribe and run environment + technical analysis automatically, then return a single
+          unified feedback report.
         </p>
       </div>
 
@@ -387,8 +492,8 @@ export function AssessForm() {
               2
             </span>
             <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-semibold text-white">Technical response</h3>
-              <p className="mt-1 text-sm text-zinc-500">Topic + written answer</p>
+              <h3 className="text-lg font-semibold text-white">Mock interview response</h3>
+              <p className="mt-1 text-sm text-zinc-500">Record audio + choose topic</p>
             </div>
           </div>
 
@@ -408,41 +513,47 @@ export function AssessForm() {
             </select>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col">
-            <label className="ui-label" htmlFor="answer">
-              Answer
-            </label>
-            <textarea
-              id="answer"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value.slice(0, MAX_ANSWER_CHARS))}
-              rows={11}
-              maxLength={MAX_ANSWER_CHARS}
-              placeholder="Example: Walk through accretion/dilution for a stock deal, or how sponsor IRR is driven in an LBO..."
-              className="ui-input min-h-[220px] resize-y font-[family-name:var(--font-geist-sans)] leading-relaxed"
-              aria-describedby="answer-hint"
-            />
-            <div
-              id="answer-hint"
-              className={`mt-2 flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums ${
-                answer.trim().length < MIN_ANSWER_CHARS ? "text-amber-400/90" : "text-zinc-500"
-              }`}
-            >
-              <span>
-                {answer.length} / {MAX_ANSWER_CHARS} characters
-                {answer.trim().length < MIN_ANSWER_CHARS && (
-                  <span className="text-zinc-500"> · need at least {MIN_ANSWER_CHARS}</span>
+          <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Recording</p>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3 text-sm text-zinc-300">
+                <span
+                  className={`h-2 w-2 rounded-full ${recording ? "bg-red-400 animate-pulse" : "bg-zinc-600"}`}
+                  aria-hidden
+                />
+                <span className="tabular-nums">
+                  {Math.floor(recordedSeconds / 60)}:{String(recordedSeconds % 60).padStart(2, "0")}
+                </span>
+                {audioBlob ? (
+                  <span className="text-emerald-400">Recorded</span>
+                ) : (
+                  <span className="text-zinc-500">Not recorded</span>
                 )}
-              </span>
-              {answer.length >= MAX_ANSWER_CHARS * 0.95 && (
-                <span className="text-amber-400/80">Approaching limit</span>
-              )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {!recording ? (
+                  <button type="button" onClick={startRecording} className="ui-btn-primary w-auto px-4 py-2.5">
+                    Start recording
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={stopRecording}
+                    className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+                  >
+                    Stop
+                  </button>
+                )}
+              </div>
             </div>
+            <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+              Speak naturally. We will transcribe and analyze your response automatically.
+            </p>
           </div>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !audioBlob}
             aria-busy={loading}
             className="ui-btn-primary mt-auto"
           >
@@ -452,7 +563,7 @@ export function AssessForm() {
                 Running models…
               </>
             ) : (
-              "Generate readiness report"
+              "Generate interview report"
             )}
           </button>
 
@@ -472,6 +583,12 @@ export function AssessForm() {
           id="assessment-print"
           className="animate-fade-in ui-card mx-auto mt-12 max-w-6xl border-zinc-800 bg-[#0F0F11] p-6 shadow-xl sm:p-10 print:mt-0 print:border print:border-zinc-300 print:bg-white print:text-zinc-900 print:shadow-none"
         >
+          <div className="mb-8 rounded-2xl border border-white/10 bg-zinc-950/40 p-5 print:hidden">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Transcript</p>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">
+              {result.transcript}
+            </p>
+          </div>
           <div className="flex flex-wrap items-end justify-between gap-6 border-b border-white/10 pb-8 print:hidden">
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Fit score</p>

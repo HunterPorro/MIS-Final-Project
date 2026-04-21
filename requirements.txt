@@ -16,5 +16,8 @@ numpy==1.26.4
 Pillow==10.4.0
 scikit-learn==1.5.2
 
+# Audio / ASR
+soundfile==0.12.1
+
 # Optional narrative quality (install if used)
 openai==1.57.4

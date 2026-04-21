@@ -38,3 +38,11 @@ class AssessResponse(BaseModel):
     technical: TechnicalResult
     fit: FitResult
     narrative: str
+
+
+class MockInterviewResponse(BaseModel):
+    transcript: str
+    workspace: WorkspaceResult
+    technical: TechnicalResult
+    fit: FitResult
+    narrative: str
