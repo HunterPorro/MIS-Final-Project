@@ -8,6 +8,7 @@ const nav = [
   { href: "/", label: "Home" },
   { href: "/interview", label: "Mock interview" },
   { href: "/superday", label: "Superday session" },
+  { href: "/team", label: "Team" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

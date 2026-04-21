@@ -73,7 +73,7 @@ async def assess(
     w_res = WorkspaceResult(label=label, confidence=conf, class_index=idx)
 
     level, level_conf, _probs = tech.predict(t_norm, answer_text)
-    skills, missed = TechnicalAnalyzer.lexicon_scan(t_norm, answer_text)
+    skills, missed, coverage, explained, cov_score = TechnicalAnalyzer.lexicon_scan(t_norm, answer_text)
     summ = TechnicalAnalyzer.short_summary(level, t_norm, skills)
 
     tech_res = TechnicalResult(
@@ -84,6 +84,9 @@ async def assess(
         skills_identified=skills,
         concepts_missed=missed,
         summary=summ,
+        coverage=coverage,
+        explained=explained,
+        coverage_score=cov_score,
     )
 
     fit = compute_fit(prof_prob, level)

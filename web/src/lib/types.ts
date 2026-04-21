@@ -14,6 +14,9 @@ export type AssessResponse = {
     skills_identified: string[];
     concepts_missed: string[];
     summary: string;
+    coverage?: Record<string, boolean> | null;
+    explained?: Record<string, boolean> | null;
+    coverage_score?: number | null;
   };
   fit: {
     fit_score: number;
@@ -36,6 +39,11 @@ export type MockInterviewResponse = AssessResponse & {
     word_count: number;
     speaking_rate_wpm: number | null;
     has_numbers: boolean;
+    filler_per_100?: number | null;
+    has_time_or_scale?: boolean | null;
+    has_outcome_number?: boolean | null;
+    star_hits?: number | null;
+    subscores?: Record<string, number> | null;
     feedback: string[];
   };
 };

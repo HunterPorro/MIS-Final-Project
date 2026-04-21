@@ -24,6 +24,9 @@ class TechnicalResult(BaseModel):
     skills_identified: list[str]
     concepts_missed: list[str]
     summary: str
+    coverage: dict[str, bool] | None = None
+    explained: dict[str, bool] | None = None
+    coverage_score: float | None = None
 
 
 class BehavioralResult(BaseModel):
@@ -34,6 +37,11 @@ class BehavioralResult(BaseModel):
     word_count: int
     speaking_rate_wpm: float | None = None
     has_numbers: bool
+    filler_per_100: float | None = None
+    has_time_or_scale: bool | None = None
+    has_outcome_number: bool | None = None
+    star_hits: int | None = None
+    subscores: dict[str, float] | None = None
     feedback: list[str]
 
 

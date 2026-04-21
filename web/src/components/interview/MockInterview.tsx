@@ -124,10 +124,23 @@ export function MockInterview() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1
+  const [noInputStreakMs, setNoInputStreakMs] = useState(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MockInterviewResponse | null>(null);
+
+  const downloadJson = useCallback((filename: string, value: unknown) => {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, []);
 
   const stopCamera = useCallback(() => {
     camStream?.getTracks().forEach((t) => t.stop());
@@ -222,6 +235,7 @@ export function MockInterview() {
         // map to 0..1 with a bit of gain
         const level = Math.min(1, rms * 3.2);
         setMicLevel(level);
+        setNoInputStreakMs((ms) => (level < 0.02 ? Math.min(5000, ms + 16) : 0));
         rafRef.current = window.requestAnimationFrame(loop);
       };
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
@@ -245,6 +259,7 @@ export function MockInterview() {
     tickRef.current = undefined;
     setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
     setMicLevel(0);
+    setNoInputStreakMs(0);
     if (rafRef.current) {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -370,6 +385,7 @@ export function MockInterview() {
                   <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
                 </span>
               </span>
+              {recording && noInputStreakMs >= 1500 && <span className="meet-chip">No input detected</span>}
               <span className="meet-chip">{question.track.toUpperCase()}</span>
               <span className="meet-chip">Suggested {formatTime(question.suggestedSeconds)}</span>
             </div>
@@ -394,7 +410,10 @@ export function MockInterview() {
             )}
 
             {audioBlob && !recording && (
-              <div className="absolute left-3 top-3 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+              <div
+                className="absolute left-3 top-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-100"
+                style={{ boxShadow: "0 14px 40px -25px rgba(79,70,229,0.55)" }}
+              >
                 Recorded
               </div>
             )}
@@ -460,6 +479,39 @@ export function MockInterview() {
                 </label>
               </div>
 
+              <details className="mt-4 meet-panel frame-gradient overflow-hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-sm font-semibold text-white marker:content-none [&::-webkit-details-marker]:hidden">
+                  Setup checklist
+                  <svg className="h-5 w-5 shrink-0 text-zinc-500 transition group-open:rotate-180" viewBox="0 0 24 24" fill="none" aria-hidden>
+                    <path d="M19 9l-7 7-7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </summary>
+                <div className="border-t border-white/5 bg-black/35 px-4 py-4 text-sm text-zinc-300">
+                  <ul className="space-y-3">
+                    <li className="flex items-start gap-3">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" aria-hidden />
+                      <span>
+                        <span className="font-semibold text-zinc-200">Mic</span>: speak and confirm the meter moves.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" aria-hidden />
+                      <span>
+                        <span className="font-semibold text-zinc-200">Room</span>: camera optional; capture a frame if you
+                        want environment scoring.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" aria-hidden />
+                      <span>
+                        <span className="font-semibold text-zinc-200">One take</span>: Space to start/stop, then Enter to
+                        generate the report.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </details>
+
               <div className="mt-4">
                 <p className="text-sm font-semibold text-zinc-100">{question.title}</p>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">{question.prompt}</p>
@@ -469,9 +521,42 @@ export function MockInterview() {
 
           {rightTab === "report" && (
             <div className="p-4">
-              {!result ? (
+              {submitting ? (
+                <div className="meet-section">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Generating</div>
+                  <div className="mt-3 space-y-3">
+                    <div className="h-8 w-40 rounded-lg bg-white/5" />
+                    <div className="h-2 w-full rounded-full bg-white/5" />
+                    <div className="h-2 w-11/12 rounded-full bg-white/5" />
+                    <div className="h-2 w-10/12 rounded-full bg-white/5" />
+                    <div className="h-28 w-full rounded-xl bg-white/5" />
+                  </div>
+                </div>
+              ) : !result ? (
                 <div className="meet-section text-sm text-zinc-300">
-                  Record an answer, then generate a report.
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Setup</div>
+                  <div className="mt-3 grid gap-2 text-sm text-zinc-300">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" aria-hidden />
+                      <span>
+                        <span className="font-semibold text-zinc-200">Mic:</span> allow permissions and verify the meter
+                        moves.
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" aria-hidden />
+                      <span>
+                        <span className="font-semibold text-zinc-200">Record:</span> Space to start/stop. Aim for{" "}
+                        {formatTime(question.suggestedSeconds)}.
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-white/70" aria-hidden />
+                      <span>
+                        <span className="font-semibold text-zinc-200">Generate:</span> Enter to run transcription + scoring.
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="grid gap-3">
@@ -487,9 +572,9 @@ export function MockInterview() {
 
                     <div className="mt-4 space-y-3">
                       {[
-                        { label: "Environment", v: result.fit.environment_component, tone: "bg-emerald-400/70" },
+                        { label: "Environment", v: result.fit.environment_component, tone: "bg-indigo-400/70" },
                         { label: "Technical", v: result.fit.technical_component, tone: "bg-sky-400/70" },
-                        { label: "Behavioral", v: result.behavioral.score, tone: "bg-violet-400/70" },
+                        { label: "Behavioral", v: result.behavioral.score, tone: "bg-indigo-300/70" },
                       ].map((row) => (
                         <div key={row.label}>
                           <div className="flex items-center justify-between text-xs">
@@ -501,6 +586,41 @@ export function MockInterview() {
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                        onClick={() => downloadJson(`report-${question.id}.json`, result)}
+                      >
+                        Download JSON
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(
+                              [
+                                `Prompt: ${question.title}`,
+                                "",
+                                `Fit: ${result.fit.fit_score} (Env ${result.fit.environment_component} · Tech ${result.fit.technical_component} · Beh ${result.behavioral.score})`,
+                                "",
+                                "Narrative:",
+                                result.narrative,
+                                "",
+                                "Transcript:",
+                                result.transcript,
+                              ].join("\n"),
+                            );
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        Copy report
+                      </button>
                     </div>
                   </div>
 
@@ -530,7 +650,18 @@ export function MockInterview() {
 
           {rightTab === "transcript" && (
             <div className="p-4">
-              {!result ? (
+              {submitting ? (
+                <div className="meet-section">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Generating</div>
+                  <div className="mt-3 space-y-3">
+                    <div className="h-2 w-full rounded-full bg-white/5" />
+                    <div className="h-2 w-11/12 rounded-full bg-white/5" />
+                    <div className="h-2 w-10/12 rounded-full bg-white/5" />
+                    <div className="h-2 w-9/12 rounded-full bg-white/5" />
+                    <div className="h-2 w-10/12 rounded-full bg-white/5" />
+                  </div>
+                </div>
+              ) : !result ? (
                 <div className="meet-section text-sm text-zinc-300">
                   Transcript appears after you generate a report.
                 </div>
@@ -538,19 +669,28 @@ export function MockInterview() {
                 <div className="meet-section">
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Transcript</div>
-                    <button
-                      type="button"
-                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(result.transcript);
-                        } catch {
-                          // ignore
-                        }
-                      }}
-                    >
-                      Copy
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(result.transcript);
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                        onClick={() => downloadJson(`transcript-${question.id}.json`, { transcript: result.transcript })}
+                      >
+                        Download
+                      </button>
+                    </div>
                   </div>
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
                 </div>

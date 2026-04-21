@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import settings
+from api.middleware.rate_limit import RateLimitMiddleware
+from api.middleware.request_id import RequestIdMiddleware
 from api.routers import assess
 from api.routers import mock_interview
 from api.services.runtime_models import preload
@@ -30,6 +32,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestIdMiddleware)
+if settings.enable_rate_limit:
+    app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_per_minute)
 app.include_router(assess.router, prefix="")
 app.include_router(mock_interview.router, prefix="")
 
@@ -38,7 +43,7 @@ app.include_router(mock_interview.router, prefix="")
 def health():
     from pathlib import Path
 
-    from api.services.runtime_models import technical_path, workspace_path
+    from api.services.runtime_models import model_status, technical_path, workspace_path
 
     return {
         "ok": True,
@@ -46,6 +51,8 @@ def health():
         "version": "1.0.0",
         "workspace_ckpt": workspace_path().is_file(),
         "technical_model": (technical_path() / "config.json").is_file(),
+        "models": model_status(),
+        "env": settings.environment,
     }
 
 

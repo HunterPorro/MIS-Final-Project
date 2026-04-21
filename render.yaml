@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: final-round-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: ENVIRONMENT
+        value: "prod"
+      - key: ENABLE_RATE_LIMIT
+        value: "true"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "60"
+      - key: ALLOW_TRANSCRIPT_OVERRIDE
+        value: "false"
+      - key: CORS_ORIGINS
+        value: "https://YOUR-VERCEL-DOMAIN.vercel.app"
+      # Set OPENAI_API_KEY / ADMIN_KEY in Render dashboard (secrets)
+

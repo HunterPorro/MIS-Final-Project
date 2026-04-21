@@ -48,6 +48,11 @@ export function SiteFooter() {
                   </a>
                 </li>
                 <li>
+                  <a href="/team" className="text-zinc-400 hover:text-white">
+                    Team
+                  </a>
+                </li>
+                <li>
                   <a href="#how-it-works" className="text-zinc-400 hover:text-white">
                     How it works
                   </a>

@@ -94,10 +94,30 @@ Direct mode (no proxy): `NEXT_PUBLIC_USE_PROXY=0` and `NEXT_PUBLIC_API_URL=http:
 
 ### Deployment (typical)
 
-- **Frontend (Vercel):** deploy the `web/` app. Set `NEXT_PUBLIC_USE_PROXY=1`, `BACKEND_URL` to your hosted API URL (HTTPS), and build.
-- **API (Render, Railway, Fly.io, VM):** run `uvicorn api.main:app --host 0.0.0.0 --port 8000` with `models/` available and `CORS_ORIGINS` including your Vercel domain if clients call the API directly.
+- **Frontend (Vercel):** deploy the `web/` app.
+  - Set `NEXT_PUBLIC_USE_PROXY=1`
+  - Set `BACKEND_URL=https://<your-api-host>` (server-only; used by the Next Route Handler to forward `/api/py/*`)
+- **API (Render, Railway, Fly.io, VM):**
+  - Run `uvicorn api.main:app --host 0.0.0.0 --port 8000` with `models/` available
+  - Set `ENVIRONMENT=prod`
+  - Set `CORS_ORIGINS=https://<your-vercel-domain>` if browsers ever call the API directly (proxy mode avoids this)
+
+This repo includes `render.yaml` for a one-click container deployment on Render (edit the `CORS_ORIGINS` value and set secrets in the dashboard).
 
 `docker compose` builds the API image; mount or bake `models/` into the container. For the `web` service in compose, set `BACKEND_URL=http://api:8000` and `NEXT_PUBLIC_USE_PROXY=1` so the Next dev server proxies to the API container.
+
+### Public beta hardening knobs
+
+API environment variables (see `api/.env.example`):
+
+- `ENABLE_RATE_LIMIT=true` and `RATE_LIMIT_PER_MINUTE=60` (basic in-memory IP limit)
+- `ALLOW_TRANSCRIPT_OVERRIDE=false` (dev-only test hook; can be enabled only with `ADMIN_KEY`)
+- `ADMIN_KEY=<secret>` (send as `X-Admin-Key` when using `transcript_override`)
+
+Observability:
+
+- `/health` reports checkpoint presence plus runtime model load state + timestamps.
+- Responses include `X-Request-Id`; the API logs timing events per request (`asr_done`, `technical_done`, etc.).
 
 ### Optional: narrative polish
 

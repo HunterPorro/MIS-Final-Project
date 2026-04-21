@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MockInterviewResponse, Topic } from "@/lib/types";
 import { apiUrl } from "@/lib/api";
 import { QUESTION_BANK, type InterviewQuestion } from "@/components/interview/QuestionBank";
@@ -118,11 +118,24 @@ export function SessionInterview() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1
+  const [noInputStreakMs, setNoInputStreakMs] = useState(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reports, setReports] = useState<MockInterviewResponse[]>([]);
   const done = reports.length === sessionQuestions.length;
+
+  const downloadJson = useCallback((filename: string, value: unknown) => {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, []);
 
   const startRecording = async () => {
     setError(null);
@@ -167,7 +180,9 @@ export function SessionInterview() {
           sum += x * x;
         }
         const rms = Math.sqrt(sum / data.length);
-        setMicLevel(Math.min(1, rms * 3.2));
+        const level = Math.min(1, rms * 3.2);
+        setMicLevel(level);
+        setNoInputStreakMs((ms) => (level < 0.02 ? Math.min(5000, ms + 16) : 0));
         rafRef.current = window.requestAnimationFrame(loop);
       };
       if (rafRef.current) window.cancelAnimationFrame(rafRef.current);
@@ -191,6 +206,7 @@ export function SessionInterview() {
     tickRef.current = undefined;
     setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
     setMicLevel(0);
+    setNoInputStreakMs(0);
     if (rafRef.current) {
       window.cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -326,7 +342,8 @@ export function SessionInterview() {
                 <span className="meet-meter" aria-hidden>
                   <span className="meet-meter-fill" style={{ width: `${Math.round(micLevel * 100)}%` }} />
                 </span>
-                {audioBlob ? <span className="text-emerald-400">Recorded</span> : <span className="text-zinc-500">Not recorded</span>}
+                {audioBlob ? <span className="text-zinc-100">Recorded</span> : <span className="text-zinc-500">Not recorded</span>}
+                {recording && noInputStreakMs >= 1500 && <span className="text-amber-200/90">No input</span>}
               </div>
             </div>
             <div className="mt-3 text-xs text-zinc-500">
@@ -344,7 +361,41 @@ export function SessionInterview() {
 
       {done && (
         <section className="ui-card mx-auto mt-10 max-w-6xl p-6 sm:p-10">
-          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Session report</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Session report</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                onClick={() => downloadJson("superday-report.json", { summary, reports })}
+              >
+                Download JSON
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(
+                      [
+                        `Superday summary: Fit ${summary.avgFit} (Env ${summary.avgEnv} · Tech ${summary.avgTech} · Beh ${summary.avgBeh})`,
+                        "",
+                        "Top technical gaps:",
+                        ...(summary.topGaps.length ? summary.topGaps : ["None flagged."]),
+                        "",
+                        "Top coaching:",
+                        ...(summary.topCoaching.length ? summary.topCoaching : ["No major flags."]),
+                      ].join("\n"),
+                    );
+                  } catch {
+                    // ignore
+                  }
+                }}
+              >
+                Copy summary
+              </button>
+            </div>
+          </div>
           <div className="mt-4 grid gap-6 sm:grid-cols-4">
             <div className="meet-section">
               <div className="text-xs text-zinc-500">Avg Fit</div>

@@ -97,9 +97,9 @@ export function InteractiveDemo() {
                           </div>
                         </div>
                         <div className="mt-4 space-y-3">
-                          <ScoreBar label="Environment" value={64} tone="bg-emerald-400/70" />
+                          <ScoreBar label="Environment" value={64} tone="bg-indigo-400/70" />
                           <ScoreBar label="Technical" value={72} tone="bg-sky-400/70" />
-                          <ScoreBar label="Behavioral" value={84} tone="bg-violet-400/70" />
+                          <ScoreBar label="Behavioral" value={84} tone="bg-indigo-300/70" />
                         </div>
                       </div>
                       <div className="meet-section">

@@ -26,6 +26,11 @@ class BehavioralResult:
     speaking_rate_wpm: float | None
     has_numbers: bool
     feedback: list[str]
+    filler_per_100: float | None = None
+    has_time_or_scale: bool | None = None
+    has_outcome_number: bool | None = None
+    star_hits: int | None = None
+    subscores: dict[str, float] | None = None
 
 
 def _count_words(text: str) -> int:
@@ -67,8 +72,8 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
         re.search(r"\b\d+(?:\.\d+)?\s*(?:%|percent|bps)?\b", t, flags=re.IGNORECASE)
         or re.search(r"(?i)(\$\s*\d+|\d+\s*(?:mm|bn)\b)", t)
     )
-    has_time_or_scale = bool(re.search(r"(?i)\\b(week|month|quarter|year|hrs?|days?)\\b", t)) or bool(
-        re.search(r"(?i)\\b(\\$|usd|mm|bn|bps|points)\\b", t)
+    has_time_or_scale = bool(re.search(r"(?i)\b(week|month|quarter|year|hrs?|days?)\b", t)) or bool(
+        re.search(r"(?i)\b(\$|usd|mm|bn|bps|points)\b", t)
     )
 
     # Fillers
@@ -105,15 +110,15 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
 
     # Score (simple, transparent)
     score = 0.0
-    score += min(42.0, (star_hits / 4.0) * 42.0)
-    score += 22.0 if (has_numbers and has_outcome_number) else 16.0 if has_numbers else 8.0
-    if wpm is None:
-        score += 12.0
-    else:
-        score += 12.0 if 125 <= wpm <= 175 else 7.0
-    score += 24.0 if wc >= 110 else 18.0 if wc >= 85 else 12.0 if wc >= 60 else 7.0
-    score += 6.0 if has_time_or_scale else 2.0
-    score -= min(18.0, filler_per_100 * 1.6)
+    star_score = min(42.0, (star_hits / 4.0) * 42.0)
+    quant_score = 22.0 if (has_numbers and has_outcome_number) else 16.0 if has_numbers else 8.0
+    pace_score = 12.0 if (wpm is None or (125 <= wpm <= 175)) else 7.0
+    length_score = 24.0 if wc >= 110 else 18.0 if wc >= 85 else 12.0 if wc >= 60 else 7.0
+    scope_score = 6.0 if has_time_or_scale else 2.0
+    filler_penalty = min(18.0, filler_per_100 * 1.6)
+
+    score += star_score + quant_score + pace_score + length_score + scope_score
+    score -= filler_penalty
     score = max(0.0, min(100.0, round(score, 1)))
 
     return BehavioralResult(
@@ -124,6 +129,18 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
         word_count=wc,
         speaking_rate_wpm=round(wpm, 1) if wpm is not None else None,
         has_numbers=has_numbers,
+        filler_per_100=round(filler_per_100, 1) if wc > 0 else 0.0,
+        has_time_or_scale=has_time_or_scale,
+        has_outcome_number=has_outcome_number,
+        star_hits=star_hits,
+        subscores={
+            "star": round(star_score, 1),
+            "quantification": round(quant_score, 1),
+            "pace": round(pace_score, 1),
+            "length": round(length_score, 1),
+            "scope": round(scope_score, 1),
+            "filler_penalty": round(filler_penalty, 1),
+        },
         feedback=feedback[:6],
     )
 
