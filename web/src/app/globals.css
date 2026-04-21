@@ -46,6 +46,18 @@ body {
   mix-blend-mode: overlay;
 }
 
+@keyframes floaty {
+  0% { transform: translate3d(0,0,0) scale(1); opacity: 0.75; }
+  50% { transform: translate3d(0,-10px,0) scale(1.02); opacity: 0.95; }
+  100% { transform: translate3d(0,0,0) scale(1); opacity: 0.75; }
+}
+
+@keyframes shimmer {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 ::selection {
   background-color: #FAFAFA;
   color: #0A0A0A;
@@ -173,6 +185,35 @@ body {
 
   .pressable {
     @apply transition duration-200 active:scale-[0.98];
+  }
+
+  .orb {
+    @apply absolute rounded-full blur-2xl;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.22), rgba(255,255,255,0) 60%),
+      radial-gradient(circle at 70% 70%, rgba(59,130,246,0.25), rgba(59,130,246,0) 55%);
+    animation: floaty 9s ease-in-out infinite;
+  }
+
+  .orb-2 {
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), rgba(255,255,255,0) 60%),
+      radial-gradient(circle at 70% 70%, rgba(16,185,129,0.22), rgba(16,185,129,0) 55%);
+    animation-duration: 11s;
+  }
+
+  .orb-3 {
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.16), rgba(255,255,255,0) 60%),
+      radial-gradient(circle at 70% 70%, rgba(244,63,94,0.18), rgba(244,63,94,0) 55%);
+    animation-duration: 13s;
+  }
+
+  .cta-band {
+    @apply frame-gradient meet-panel;
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02)),
+      radial-gradient(800px 300px at 15% 0%, rgba(59,130,246,0.16), transparent 55%),
+      radial-gradient(700px 280px at 90% 0%, rgba(16,185,129,0.14), transparent 60%),
+      rgba(0,0,0,0.3);
+    background-size: 200% 200%;
+    animation: shimmer 14s ease-in-out infinite;
   }
 }
 

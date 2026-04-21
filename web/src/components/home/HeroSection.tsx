@@ -4,6 +4,11 @@ export function HeroSection() {
       id="overview"
       className="app-backdrop relative overflow-hidden border-b border-white/5 print:hidden scroll-mt-[4.5rem]"
     >
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="orb left-[-120px] top-[-140px] h-[360px] w-[360px] opacity-70" />
+        <div className="orb orb-2 right-[-140px] top-[120px] h-[420px] w-[420px] opacity-60" />
+        <div className="orb orb-3 left-[35%] top-[55%] h-[320px] w-[320px] opacity-45" />
+      </div>
       <div className="relative mx-auto max-w-6xl px-4 pb-16 pt-12 sm:px-6 sm:pb-24 sm:pt-16 lg:pb-28 lg:pt-20">
         <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
           <div>
