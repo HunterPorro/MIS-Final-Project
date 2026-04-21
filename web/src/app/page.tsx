@@ -1,5 +1,6 @@
 import { HeroSection } from "@/components/home/HeroSection";
 import { ProofStrip } from "@/components/home/ProofStrip";
+import { InteractiveDemo } from "@/components/home/InteractiveDemo";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { QuickTips } from "@/components/home/QuickTips";
 import { CtaBand } from "@/components/home/CtaBand";
@@ -11,6 +12,7 @@ export default function Home() {
     <AppShell>
       <HeroSection />
       <ProofStrip />
+      <InteractiveDemo />
       <HowItWorks />
       <QuickTips />
       <CtaBand />
