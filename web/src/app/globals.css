@@ -10,7 +10,9 @@
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
+  letter-spacing: -0.01em;
+  text-rendering: geometricPrecision;
 }
 
 /* Premium background without looking "AI-ish" */
@@ -28,6 +30,22 @@ body {
 }
 
 @layer components {
+  .type-h1 {
+    @apply text-3xl font-semibold tracking-tight text-white sm:text-4xl;
+  }
+
+  .type-h2 {
+    @apply text-2xl font-semibold tracking-tight text-white;
+  }
+
+  .type-body {
+    @apply text-sm leading-relaxed text-zinc-300;
+  }
+
+  .type-muted {
+    @apply text-xs text-zinc-500;
+  }
+
   /* Crisp, solid cards instead of glassy translucent ones */
   .ui-card {
     @apply rounded-2xl border border-white/10 bg-[#0C0C0E] shadow-[0_18px_50px_-30px_rgba(0,0,0,0.85)];
