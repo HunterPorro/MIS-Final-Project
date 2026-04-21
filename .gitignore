@@ -1,0 +1,32 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# ML artifacts (train to regenerate)
+models/*.pt
+models/workspace/
+models/technical/
+!models/.gitkeep
+
+# Node
+node_modules/
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Data caches
+training/data/workspace/
+training/data/*.cache

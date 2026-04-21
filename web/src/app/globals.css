@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0A0A0A;
+  --foreground: #FAFAFA;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background-color: #FAFAFA;
+  color: #0A0A0A;
+}
+
+@layer components {
+  /* Crisp, solid cards instead of glassy translucent ones */
+  .ui-card {
+    @apply rounded-xl border border-zinc-800 bg-[#0F0F11] shadow-sm;
+  }
+
+  .ui-card-hover {
+    @apply transition duration-300 hover:border-zinc-600;
+  }
+
+  /* Monochromatic sharp native-feeling inputs */
+  .ui-input {
+    @apply mt-2 w-full rounded-lg border border-zinc-800 bg-[#0A0A0A] px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-300 focus:bg-[#0F0F11];
+  }
+
+  .ui-label {
+    @apply block text-sm font-medium tracking-tight text-zinc-400;
+  }
+
+  /* High contrast, stark buttons */
+  .ui-btn-primary {
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-5 py-3 text-sm font-semibold tracking-wide text-black shadow-sm transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .ui-btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-transparent px-4 py-2.5 text-sm font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  body {
+    background: #fff !important;
+    color: #171717 !important;
+  }
+}
