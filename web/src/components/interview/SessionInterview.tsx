@@ -6,6 +6,7 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import { waitForVideoDimensions } from "@/lib/video";
 import { buildSuperdaySession, type InterviewQuestion } from "@/components/interview/QuestionBank";
 import { computeMicLevel, createMicBuffers, emaNext, type MicAnalysisBuffers } from "@/lib/micLevel";
+import { captureVideoJpegFile } from "@/lib/gazeFrames";
 import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
 
 const SUPERDAY_MAX_SECONDS = 90;
@@ -131,6 +132,8 @@ export function SessionInterview() {
   const [noInputStreakMs, setNoInputStreakMs] = useState(0);
   const micEmaRef = useRef(0);
   const micBufRef = useRef<MicAnalysisBuffers | null>(null);
+  const gazeFramesRef = useRef<File[]>([]);
+  const gazeIntervalRef = useRef<number | undefined>(undefined);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,6 +194,23 @@ export function SessionInterview() {
       el.onloadedmetadata = null;
     };
   }, [camStream, videoEl]);
+
+  useEffect(() => {
+    if (!recording || !camStream) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const snap = async () => {
+      if (gazeFramesRef.current.length >= 6) return;
+      const f = await captureVideoJpegFile(v);
+      if (f) gazeFramesRef.current.push(f);
+    };
+    void snap();
+    gazeIntervalRef.current = window.setInterval(() => void snap(), 2400);
+    return () => {
+      if (gazeIntervalRef.current !== undefined) window.clearInterval(gazeIntervalRef.current);
+      gazeIntervalRef.current = undefined;
+    };
+  }, [recording, camStream]);
 
   const startCamera = async () => {
     setError(null);
@@ -278,7 +298,9 @@ export function SessionInterview() {
   }, []);
 
   const stopRecordingRef = useRef(stopRecording);
-  stopRecordingRef.current = stopRecording;
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
 
   useEffect(() => {
     if (!recording) return;
@@ -291,6 +313,7 @@ export function SessionInterview() {
     setError(null);
     setAudioBlob(null);
     setSeconds(0);
+    gazeFramesRef.current = [];
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       audioStreamRef.current = s;
@@ -357,12 +380,14 @@ export function SessionInterview() {
       fd.append("question_track", q.track);
       fd.append("audio_wav", new File([wav], `${q.id}.wav`, { type: "audio/wav" }));
       if (snapshotFile) fd.append("image", snapshotFile);
+      for (const gf of gazeFramesRef.current) fd.append("gaze_frames", gf);
       const ctrl = new AbortController();
       const t = window.setTimeout(() => ctrl.abort(), 120_000);
       const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
       window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
       const data = (await res.json()) as MockInterviewResponse;
+      gazeFramesRef.current = [];
       setReports((prev) => [...prev, data]);
       const completedAll = reports.length + 1 >= sessionQuestions.length;
       if (completedAll) {
@@ -425,6 +450,7 @@ export function SessionInterview() {
     const tech = reports.map((r) => r.fit.technical_component);
     const env = reports.map((r) => r.fit.environment_component);
     const beh = reports.map((r) => r.behavioral.score);
+    const dels = reports.map((r) => r.fit.delivery_component).filter((x): x is number => x != null);
     const gaps = uniq(reports.flatMap((r) => r.technical.concepts_missed)).slice(0, 7);
     const coaching = uniq(reports.flatMap((r) => r.behavioral.feedback)).slice(0, 7);
     return {
@@ -432,13 +458,15 @@ export function SessionInterview() {
       avgTech: Math.round(average(tech) * 10) / 10,
       avgEnv: Math.round(average(env) * 10) / 10,
       avgBeh: Math.round(average(beh) * 10) / 10,
+      avgDelivery: dels.length ? Math.round(average(dels) * 10) / 10 : null,
       topGaps: gaps,
       topCoaching: coaching,
     };
   }, [reports]);
 
   return (
-    <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
+    <div className="app-backdrop min-h-[calc(100vh-64px)] w-full">
+      <div className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="type-h1">Full mock interview</div>
@@ -662,7 +690,9 @@ export function SessionInterview() {
                   try {
                     await navigator.clipboard.writeText(
                       [
-                        `Full mock summary: Fit ${summary.avgFit} (Env ${summary.avgEnv} · Tech ${summary.avgTech} · Beh ${summary.avgBeh})`,
+                        `Full mock summary: Fit ${summary.avgFit} (Env ${summary.avgEnv} · Tech ${summary.avgTech} · Beh ${summary.avgBeh}${
+                          summary.avgDelivery != null ? ` · Delivery ${summary.avgDelivery}` : ""
+                        })`,
                         "",
                         "Top technical gaps:",
                         ...(summary.topGaps.length ? summary.topGaps : ["None flagged."]),
@@ -680,7 +710,9 @@ export function SessionInterview() {
               </button>
             </div>
           </div>
-          <div className="mt-4 grid gap-6 sm:grid-cols-4">
+          <div
+            className={`mt-4 grid gap-6 ${summary.avgDelivery != null ? "sm:grid-cols-2 lg:grid-cols-5" : "sm:grid-cols-4"}`}
+          >
             <div className="meet-section">
               <div className="text-xs text-zinc-500">Avg Fit</div>
               <div className="mt-2 text-3xl font-semibold text-white">{summary.avgFit}</div>
@@ -697,6 +729,12 @@ export function SessionInterview() {
               <div className="text-xs text-zinc-500">Avg Environment</div>
               <div className="mt-2 text-3xl font-semibold text-white">{summary.avgEnv}</div>
             </div>
+            {summary.avgDelivery != null && (
+              <div className="meet-section">
+                <div className="text-xs text-zinc-500">Avg Delivery</div>
+                <div className="mt-2 text-3xl font-semibold text-white">{summary.avgDelivery}</div>
+              </div>
+            )}
           </div>
 
           <div className="mt-8">
@@ -869,6 +907,7 @@ export function SessionInterview() {
             {error}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

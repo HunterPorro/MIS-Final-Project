@@ -45,6 +45,7 @@ class BehavioralResult(BaseModel):
     has_time_or_scale: bool | None = None
     has_outcome_number: bool | None = None
     star_hits: int | None = None
+    hedge_hits: int | None = None
     subscores: dict[str, float] | None = None
     feedback: list[str]
 
@@ -54,6 +55,34 @@ class FitResult(BaseModel):
     environment_component: float
     technical_component: float
     weights: dict[str, float]
+    delivery_component: float | None = Field(
+        default=None,
+        description="Transcript tone + vocal prosody composite (0–100) when enabled.",
+    )
+
+
+class SentimentInsight(BaseModel):
+    tone: str
+    dominant_emotion: str | None = None
+    emotion_scores: dict[str, float] | None = None
+    note: str | None = None
+
+
+class ProsodyInsight(BaseModel):
+    label: str
+    words_per_minute: float | None = None
+    pause_fraction: float | None = None
+    pitch_std_hz: float | None = None
+    rms_cv: float | None = None
+    note: str | None = None
+
+
+class GazeInsight(BaseModel):
+    status: str
+    pattern: str | None = None
+    confidence: float | None = None
+    frames_used: int | None = None
+    warning: str | None = None
 
 
 class AssessResponse(BaseModel):
@@ -72,3 +101,6 @@ class MockInterviewResponse(BaseModel):
     behavioral: BehavioralResult
     fit: FitResult
     narrative: str
+    sentiment: SentimentInsight | None = None
+    prosody: ProsodyInsight | None = None
+    gaze: GazeInsight | None = None

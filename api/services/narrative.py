@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import logging
 
-from api.schemas import BehavioralResult, FitResult, TechnicalResult, WorkspaceResult
+from api.schemas import (
+    BehavioralResult,
+    FitResult,
+    GazeInsight,
+    ProsodyInsight,
+    SentimentInsight,
+    TechnicalResult,
+    WorkspaceResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +24,9 @@ def build_narrative(
     technical: TechnicalResult,
     fit: FitResult,
     behavioral: BehavioralResult | None = None,
+    sentiment: SentimentInsight | None = None,
+    prosody: ProsodyInsight | None = None,
+    gaze: GazeInsight | None = None,
 ) -> str:
     wl = workspace.label.lower()
     if wl == "unknown":
@@ -57,6 +68,25 @@ def build_narrative(
         )
         if behavioral.feedback:
             feedback_line = " Coaching priorities: " + "; ".join(behavioral.feedback[:4]) + "."
+    del_note = ""
+    if sentiment is not None or prosody is not None:
+        parts: list[str] = []
+        if sentiment is not None:
+            parts.append(f"Transcript tone skews {sentiment.tone} (dominant cue: {sentiment.dominant_emotion or 'n/a'}).")
+        if prosody is not None:
+            parts.append(f"Vocal delivery reads as {prosody.label} (prosody signal).")
+        if parts:
+            del_note = " " + " ".join(parts)
+    gaze_note = ""
+    if gaze is not None and gaze.status == "ok" and gaze.pattern:
+        gwarn = f" {gaze.warning}" if gaze.warning else ""
+        pct = min(100.0, max(0.0, gaze.confidence * 100.0))
+        gaze_note = (
+            f" Optional gaze heuristic: movement pattern `{gaze.pattern}`"
+            f" (confidence {pct:.0f}%).{gwarn}"
+            if gaze.confidence is not None
+            else f" Optional gaze heuristic: movement pattern `{gaze.pattern}`.{gwarn}"
+        )
     rubric_label = "Communication & story depth" if is_behavioral_topic else "Technical stance"
     causal_note = ""
     if (
@@ -69,13 +99,16 @@ def build_narrative(
             causal_note = " Causal clarity looks thin—add a few explicit “because” / “therefore” links between steps."
         elif es < 55.0:
             causal_note = " Causal clarity is uneven—tie each major step to why it moves the answer."
+    del_fit = ""
+    if fit.delivery_component is not None:
+        del_fit = f", delivery {fit.delivery_component:.0f}"
     return (
         f"Readiness snapshot — Fit {fit.fit_score:.0f}/100 (env {fit.environment_component:.0f}, "
-        f"technical {fit.technical_component:.0f}).{beh_note} {env_note} "
+        f"technical {fit.technical_component:.0f}{del_fit}).{beh_note} {env_note} "
         f"{rubric_label}: {technical.expertise_label} on {technical.topic}. "
         f"Observed strengths: {strengths}. "
         f"{'Gaps to address next' if is_behavioral_topic else 'Concepts to reinforce next'}: {gaps}. "
-        f"{technical.summary}{causal_note}{feedback_line}"
+        f"{technical.summary}{causal_note}{feedback_line}{del_note}{gaze_note}"
     )
 
 

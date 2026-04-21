@@ -10,7 +10,15 @@ from PIL import Image
 from api.config import settings
 from api.ml.behavioral import analyze_behavioral
 from api.ml.technical_infer import LEVEL_LABELS, interview_technical, normalize_topic
-from api.schemas import BehavioralResult, MockInterviewResponse, TechnicalResult, WorkspaceResult
+from api.schemas import (
+    BehavioralResult,
+    GazeInsight,
+    MockInterviewResponse,
+    ProsodyInsight,
+    SentimentInsight,
+    TechnicalResult,
+    WorkspaceResult,
+)
 from api.services.fit import compute_fit
 from api.services.narrative import build_narrative, maybe_enrich_with_llm
 from api.services.runtime_models import get_asr, get_technical, get_workspace
@@ -22,6 +30,8 @@ logger = logging.getLogger("final-round-api.mock_interview")
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024  # ~25MB wav cap for safety
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_GAZE_FRAME_BYTES = 2 * 1024 * 1024
+MAX_GAZE_FRAMES = 8
 
 
 @router.post("/mock-interview", response_model=MockInterviewResponse)
@@ -33,6 +43,7 @@ async def mock_interview(
     transcript_override: str | None = Form(default=None),
     audio_wav: UploadFile = File(...),
     image: UploadFile | None = File(default=None),
+    gaze_frames: list[UploadFile] | None = File(default=None),
     x_admin_key: str | None = Header(default=None),
 ):
     """
@@ -172,17 +183,106 @@ async def mock_interview(
         }
     )
 
+    sentiment_insight: SentimentInsight | None = None
+    prosody_insight: ProsodyInsight | None = None
+    gaze_insight: GazeInsight | None = None
+    delivery_score: float | None = None
+    pr = None
+    sent = None
+
+    if settings.enable_delivery_insights:
+        from api.ml.delivery import delivery_score_0_100
+        from api.ml.prosody import analyze_prosody
+        from api.ml.sentiment_infer import analyze_sentiment
+
+        try:
+            pr = analyze_prosody(
+                audio_arr,
+                sr,
+                transcript_word_count=beh_res.word_count,
+                audio_seconds=audio_seconds,
+                speaking_rate_wpm=beh_res.speaking_rate_wpm,
+            )
+            prosody_insight = ProsodyInsight(
+                label=pr.label,
+                words_per_minute=pr.words_per_minute,
+                pause_fraction=pr.pause_fraction,
+                pitch_std_hz=pr.pitch_std_hz,
+                rms_cv=pr.rms_cv,
+                note=pr.note,
+            )
+        except Exception as e:
+            logger.warning("prosody analysis failed: %s", e)
+
+        try:
+            sent = analyze_sentiment(transcript, hedge_hits=beh_res.hedge_hits or 0)
+            if sent is not None:
+                sentiment_insight = SentimentInsight(
+                    tone=sent.tone,
+                    dominant_emotion=sent.dominant_emotion,
+                    emotion_scores=sent.emotion_scores,
+                    note=sent.note,
+                )
+        except Exception as e:
+            logger.warning("sentiment analysis failed: %s", e)
+
+        if pr is not None:
+            delivery_score = delivery_score_0_100(sent, pr)
+
+    gaze_uploads = gaze_frames or []
+    if gaze_uploads:
+        from api.ml.gaze import analyze_gaze_sequence
+
+        pil_gaze: list[Image.Image] = []
+        for uf in gaze_uploads[:MAX_GAZE_FRAMES]:
+            try:
+                raw_g = await uf.read()
+            except Exception as e:
+                logger.warning("gaze frame read failed: %s", e)
+                continue
+            if len(raw_g) > MAX_GAZE_FRAME_BYTES:
+                continue
+            try:
+                pil_gaze.append(Image.open(BytesIO(raw_g)))
+            except Exception as e:
+                logger.warning("gaze frame decode failed: %s", e)
+        if pil_gaze:
+            gr = analyze_gaze_sequence(pil_gaze)
+            gaze_insight = GazeInsight(
+                status=gr.status,
+                pattern=gr.pattern,
+                confidence=gr.confidence,
+                frames_used=gr.frames_used,
+                warning=gr.warning,
+            )
+
+    w_env, w_tech, w_beh = 0.3, 0.55, 0.15
+    w_del = 0.0
+    if settings.enable_delivery_insights and delivery_score is not None:
+        w_env, w_tech, w_beh = 0.28, 0.52, 0.15
+        w_del = float(settings.fit_weight_delivery)
+
     fit = compute_fit(
         prof_prob,
         level,
         behavioral_score=beh_res.score,
         transcript_word_count=beh_res.word_count,
-        w_env=0.3,
-        w_tech=0.55,
-        w_beh=0.15,
+        delivery_score=delivery_score,
+        w_env=w_env,
+        w_tech=w_tech,
+        w_beh=w_beh,
+        w_del=w_del,
     )
     t_narr0 = time.perf_counter()
-    narrative = build_narrative(w_res, tech_res, fit, behavioral=beh_res)
+    narrative = build_narrative(
+        w_res,
+        tech_res,
+        fit,
+        behavioral=beh_res,
+        sentiment=sentiment_insight,
+        prosody=prosody_insight,
+        gaze=gaze_insight,
+    )
     narrative = await maybe_enrich_with_llm(narrative)
     logger.info(
         {
@@ -209,5 +309,8 @@ async def mock_interview(
         behavioral=beh_res,
         fit=fit,
         narrative=narrative,
+        sentiment=sentiment_insight,
+        prosody=prosody_insight,
+        gaze=gaze_insight,
     )
 

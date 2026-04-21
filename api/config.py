@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     enable_rate_limit: bool = True
     rate_limit_per_minute: int = 60
 
+    # Transcript emotion + audio prosody (small Fit weight); gaze is advisory only.
+    enable_delivery_insights: bool = True
+    fit_weight_delivery: float = 0.05
+
     def cors_list(self) -> list[str]:
         return [x.strip() for x in self.cors_origins.split(",") if x.strip()]
 

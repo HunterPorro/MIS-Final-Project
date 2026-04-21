@@ -25,6 +25,8 @@ export type AssessResponse = {
     environment_component: number;
     technical_component: number;
     weights: Record<string, number>;
+    /** Transcript tone + vocal prosody composite when enabled. */
+    delivery_component?: number | null;
   };
   narrative: string;
 };
@@ -45,7 +47,29 @@ export type MockInterviewResponse = AssessResponse & {
     has_time_or_scale?: boolean | null;
     has_outcome_number?: boolean | null;
     star_hits?: number | null;
+    hedge_hits?: number | null;
     subscores?: Record<string, number> | null;
     feedback: string[];
   };
+  sentiment?: {
+    tone: string;
+    dominant_emotion?: string | null;
+    emotion_scores?: Record<string, number> | null;
+    note?: string | null;
+  } | null;
+  prosody?: {
+    label: string;
+    words_per_minute?: number | null;
+    pause_fraction?: number | null;
+    pitch_std_hz?: number | null;
+    rms_cv?: number | null;
+    note?: string | null;
+  } | null;
+  gaze?: {
+    status: string;
+    pattern?: string | null;
+    confidence?: number | null;
+    frames_used?: number | null;
+    warning?: string | null;
+  } | null;
 };

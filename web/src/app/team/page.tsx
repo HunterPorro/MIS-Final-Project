@@ -93,7 +93,8 @@ function FounderCard({ f }: { f: Founder }) {
 export default function TeamPage() {
   return (
     <AppShell>
-    <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 py-12 sm:px-6">
+      <div className="app-backdrop min-h-[calc(100vh-64px)] w-full">
+        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
       <div className="mx-auto max-w-3xl text-center">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Team</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-5xl">Founders</h1>
@@ -143,7 +144,8 @@ export default function TeamPage() {
           </Link>
         </div>
       </section>
-    </div>
+        </div>
+      </div>
     </AppShell>
   );
 }

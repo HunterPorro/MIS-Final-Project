@@ -7,6 +7,7 @@ import { waitForVideoDimensions } from "@/lib/video";
 import { QUESTION_BANK, type InterviewQuestion } from "@/components/interview/QuestionBank";
 import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
 import { computeMicLevel, createMicBuffers, emaNext, type MicAnalysisBuffers } from "@/lib/micLevel";
+import { captureVideoJpegFile } from "@/lib/gazeFrames";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -133,6 +134,8 @@ export function MockInterview() {
   const [noInputStreakMs, setNoInputStreakMs] = useState(0);
   const micEmaRef = useRef(0);
   const micBufRef = useRef<MicAnalysisBuffers | null>(null);
+  const gazeFramesRef = useRef<File[]>([]);
+  const gazeIntervalRef = useRef<number | undefined>(undefined);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -185,6 +188,23 @@ export function MockInterview() {
     };
   }, [camStream, videoEl]);
 
+  useEffect(() => {
+    if (!recording || !camStream) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const snap = async () => {
+      if (gazeFramesRef.current.length >= 6) return;
+      const f = await captureVideoJpegFile(v);
+      if (f) gazeFramesRef.current.push(f);
+    };
+    void snap();
+    gazeIntervalRef.current = window.setInterval(() => void snap(), 2400);
+    return () => {
+      if (gazeIntervalRef.current !== undefined) window.clearInterval(gazeIntervalRef.current);
+      gazeIntervalRef.current = undefined;
+    };
+  }, [recording, camStream]);
+
   const startCamera = async () => {
     setError(null);
     try {
@@ -230,6 +250,7 @@ export function MockInterview() {
     setError(null);
     setAudioBlob(null);
     setSeconds(0);
+    gazeFramesRef.current = [];
     try {
       const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
       audioStreamRef.current = s;
@@ -339,12 +360,14 @@ export function MockInterview() {
       fd.append("question_track", question.track);
       fd.append("audio_wav", new File([wav], "answer.wav", { type: "audio/wav" }));
       if (snapshotFile) fd.append("image", snapshotFile);
+      for (const gf of gazeFramesRef.current) fd.append("gaze_frames", gf);
       const ctrl = new AbortController();
       const t = window.setTimeout(() => ctrl.abort(), 120_000);
       const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
       window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
       const data = (await res.json()) as MockInterviewResponse;
+      gazeFramesRef.current = [];
       setResult(data);
       setSessionResults((prev) => [...prev, data]);
       setRightTab("report");
@@ -439,7 +462,8 @@ export function MockInterview() {
   }, []);
 
   return (
-    <div className="app-backdrop mx-auto min-h-[calc(100vh-64px)] max-w-6xl px-4 pb-28 pt-6 sm:px-6">
+    <div className="app-backdrop min-h-[calc(100vh-64px)] w-full">
+      <div className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="type-h1">Prep by topic</div>
@@ -703,7 +727,10 @@ export function MockInterview() {
                       <div className="meet-kpi">{result.fit.fit_score}</div>
                       <div className="text-right">
                         <div className="meet-subtle">Fit score</div>
-                        <div className="meet-subtle">Env · Tech · Beh</div>
+                        <div className="meet-subtle">
+                          Env · Tech · Beh
+                          {result.fit.delivery_component != null ? " · Delivery" : ""}
+                        </div>
                       </div>
                     </div>
 
@@ -712,6 +739,15 @@ export function MockInterview() {
                         { label: "Environment", v: result.fit.environment_component, tone: "bg-indigo-400/70" },
                         { label: "Technical", v: result.fit.technical_component, tone: "bg-sky-400/70" },
                         { label: "Behavioral", v: result.behavioral.score, tone: "bg-indigo-300/70" },
+                        ...(result.fit.delivery_component != null
+                          ? [
+                              {
+                                label: "Delivery",
+                                v: result.fit.delivery_component,
+                                tone: "bg-emerald-400/60",
+                              },
+                            ]
+                          : []),
                       ].map((row) => (
                         <div key={row.label}>
                           <div className="flex items-center justify-between text-xs">
@@ -724,6 +760,43 @@ export function MockInterview() {
                         </div>
                       ))}
                     </div>
+
+                    {(result.sentiment || result.prosody || result.gaze) && (
+                      <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-zinc-950/35 p-3 text-xs leading-relaxed text-zinc-400">
+                        <div className="text-[0.65rem] font-semibold uppercase tracking-widest text-zinc-500">
+                          Tone &amp; delivery (experimental)
+                        </div>
+                        {result.sentiment && (
+                          <p>
+                            <span className="font-semibold text-zinc-200">Transcript tone:</span> {result.sentiment.tone}
+                            {result.sentiment.dominant_emotion ? ` (${result.sentiment.dominant_emotion})` : ""}.{" "}
+                            {result.sentiment.note ?? ""}
+                          </p>
+                        )}
+                        {result.prosody && (
+                          <p>
+                            <span className="font-semibold text-zinc-200">Vocal prosody:</span> {result.prosody.label}
+                            {result.prosody.words_per_minute != null ? ` · ~${Math.round(result.prosody.words_per_minute)} wpm` : ""}.{" "}
+                            {result.prosody.note ?? ""}
+                          </p>
+                        )}
+                        {result.gaze && result.gaze.status !== "unavailable" && (
+                          <p>
+                            <span className="font-semibold text-zinc-200">Gaze heuristic:</span>{" "}
+                            {result.gaze.status === "insufficient_frames"
+                              ? "Not enough camera samples during recording (keep the camera on while answering)."
+                              : result.gaze.pattern
+                                ? `Pattern ${result.gaze.pattern}${
+                                    result.gaze.confidence != null
+                                      ? ` (~${Math.round(result.gaze.confidence * 100)}% model confidence)`
+                                      : ""
+                                  }.`
+                                : "No pattern."}{" "}
+                            {result.gaze.warning ? <span className="text-zinc-500">{result.gaze.warning}</span> : null}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                       <button
@@ -742,7 +815,11 @@ export function MockInterview() {
                               [
                                 `Prompt: ${question.title}`,
                                 "",
-                                `Fit: ${result.fit.fit_score} (Env ${result.fit.environment_component} · Tech ${result.fit.technical_component} · Beh ${result.behavioral.score})`,
+                                `Fit: ${result.fit.fit_score} (Env ${result.fit.environment_component} · Tech ${result.fit.technical_component} · Beh ${result.behavioral.score}${
+                                  result.fit.delivery_component != null
+                                    ? ` · Delivery ${result.fit.delivery_component}`
+                                    : ""
+                                })`,
                                 "",
                                 "Narrative:",
                                 result.narrative,
@@ -1119,6 +1196,7 @@ export function MockInterview() {
           </p>
         </section>
       )}
+      </div>
     </div>
   );
 }

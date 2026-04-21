@@ -33,6 +33,7 @@ class BehavioralResult:
     has_time_or_scale: bool | None = None
     has_outcome_number: bool | None = None
     star_hits: int | None = None
+    hedge_hits: int | None = None
     subscores: dict[str, float] | None = None
 
 
@@ -134,9 +135,7 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
     if has_sequence and star_hits >= 2:
         feedback.append("Nice sequencing—keep each step tied to a metric or stakeholder decision.")
 
-    hedge_hits = len(
-        re.findall(r"(?i)\b(i guess|i think|maybe|perhaps|probably|i'm not sure)\b", t)
-    )
+    hedge_hits = len(re.findall(r"(?i)\b(i guess|i think|maybe|perhaps|probably|i'm not sure)\b", t))
     if hedge_hits >= 3:
         feedback.append("Reduce hedging (I think/maybe)—swap in one concrete fact per claim.")
 
@@ -167,6 +166,7 @@ def analyze_behavioral(transcript: str, audio_seconds: float | None = None) -> B
         has_time_or_scale=has_time_or_scale,
         has_outcome_number=has_outcome_number,
         star_hits=star_hits,
+        hedge_hits=hedge_hits,
         subscores={
             "star": round(star_score, 1),
             "quantification": round(quant_score, 1),

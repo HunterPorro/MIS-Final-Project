@@ -65,6 +65,8 @@ def health(response: Response):
             "behavioral prompts use a dedicated communication rubric (finance classifier skipped — OOD-safe)",
             "asr": f"Transformers ASR pipeline ({settings.asr_model})",
             "behavioral": "Rule-based STAR/rubric scoring on transcript",
+            "delivery": "Optional: DistilRoBERTa emotion on transcript + librosa prosody on WAV; "
+            "optional OpenCV gaze heuristic from multi-frame JPEGs (advisory; small Fit weight when enabled)",
         },
         "artifacts": {
             "workspace_checkpoint": str(workspace_path()) if ws_ok else None,
