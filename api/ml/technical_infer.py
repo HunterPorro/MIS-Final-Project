@@ -91,14 +91,51 @@ class TechnicalAnalyzer:
     def lexicon_scan(topic: str, text: str) -> tuple[list[str], list[str]]:
         t = topic if topic in LEXICONS else "Valuation"
         low = text.lower()
+        # Structured coverage signals (lightweight rubric)
+        def has_any(patterns: list[str]) -> bool:
+            return any(re.search(p, low) for p in patterns)
+
+        structured_hits: list[str] = []
+        if t == "Valuation":
+            if has_any([r"\bproject", r"\bforecast", r"\bbuild\b.*\bmodel"]):
+                structured_hits.append("FCF projection")
+            if has_any([r"\bdiscount", r"\bpv\b", r"\bpresent value\b"]):
+                structured_hits.append("Discounting / PV")
+            if has_any([r"\bterminal\b", r"\bgordon\b", r"\bexit multiple\b"]):
+                structured_hits.append("Terminal value methods")
+            if has_any([r"\bwacc\b", r"\bcost of equity\b", r"\bcost of debt\b"]):
+                structured_hits.append("WACC components")
+        elif t == "LBO":
+            if has_any([r"\bdebt\b", r"\bleverage\b", r"\bcapital structure\b"]):
+                structured_hits.append("Leverage / capital structure")
+            if has_any([r"\bfree cash flow\b", r"\bcash flow\b", r"\bdeleverag"]):
+                structured_hits.append("Deleveraging via cash flow")
+            if has_any([r"\birr\b", r"\bmoic\b", r"\bmultiple of money\b"]):
+                structured_hits.append("Returns framing")
+            if has_any([r"\bentry\b.*\bmultiple\b", r"\bexit\b.*\bmultiple\b", r"\bmultiple expansion\b"]):
+                structured_hits.append("Entry/exit multiple drivers")
+        else:  # M&A
+            if has_any([r"\baccret", r"\bdilut", r"\beps\b"]):
+                structured_hits.append("Accretion/dilution framing")
+            if has_any([r"\bconsideration\b", r"\bpurchase price\b", r"\bsources and uses\b"]):
+                structured_hits.append("Consideration / sources-uses")
+            if has_any([r"\bsynerg", r"\bcost savings\b", r"\brevenue synergy\b"]):
+                structured_hits.append("Synergies")
+            if has_any([r"\bgoodwill\b", r"\bppa\b", r"\bpurchase price allocation\b"]):
+                structured_hits.append("PPA / goodwill")
+
         skills: list[str] = []
         missed: list[str] = []
         for needle, label in LEXICONS[t]["skills"]:
-            if needle in low:
+            if re.search(rf"\b{re.escape(needle)}", low):
                 skills.append(label)
         for needle, label in LEXICONS[t]["gaps"]:
-            if needle not in low:
+            if not re.search(rf"\b{re.escape(needle)}", low):
                 missed.append(label)
+
+        # Boost skills with structured coverage so the report is less keyword-y
+        for s in structured_hits:
+            skills.append(s)
         # De-duplicate preserving order
         def dedupe(xs: list[str]) -> list[str]:
             seen: set[str] = set()
@@ -109,7 +146,7 @@ class TechnicalAnalyzer:
                     out.append(x)
             return out
 
-        return dedupe(skills), dedupe(missed)[:5]
+        return dedupe(skills)[:7], dedupe(missed)[:6]
 
     @staticmethod
     def short_summary(level: int, topic: str, skills: list[str]) -> str:

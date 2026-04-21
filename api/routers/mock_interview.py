@@ -120,7 +120,7 @@ async def mock_interview(
         summary=summ,
     )
 
-    fit = compute_fit(prof_prob, level)
+    fit = compute_fit(prof_prob, level, behavioral_score=beh_res.score, w_env=0.3, w_tech=0.55, w_beh=0.15)
     narrative = build_narrative(w_res, tech_res, fit, behavioral=beh_res)
     narrative = await maybe_enrich_with_llm(narrative)
 
