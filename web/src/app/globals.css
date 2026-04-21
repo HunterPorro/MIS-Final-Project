@@ -5,6 +5,8 @@
 :root {
   --background: #0A0A0A;
   --foreground: #FAFAFA;
+  --accent: #4f46e5; /* indigo-600 */
+  --accent-2: #60a5fa; /* blue-400 */
 }
 
 body {
@@ -18,9 +20,8 @@ body {
 /* Premium background without looking "AI-ish" */
 .app-backdrop {
   background:
-    radial-gradient(900px 500px at 15% -10%, rgba(59, 130, 246, 0.18), transparent 60%),
-    radial-gradient(700px 420px at 95% 0%, rgba(16, 185, 129, 0.14), transparent 55%),
-    radial-gradient(900px 520px at 50% 110%, rgba(244, 63, 94, 0.10), transparent 55%),
+    radial-gradient(900px 520px at 12% -10%, rgba(79, 70, 229, 0.22), transparent 60%),
+    radial-gradient(820px 520px at 92% 0%, rgba(96, 165, 250, 0.14), transparent 58%),
     linear-gradient(#070708, #0A0A0A 40%, #070708);
 }
 
@@ -149,7 +150,8 @@ body {
   }
 
   .meet-meter-fill {
-    @apply h-full rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-sky-200;
+    @apply h-full rounded-full;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
   }
 
   .meet-section {
@@ -174,7 +176,7 @@ body {
     inset: 0;
     padding: 1px;
     border-radius: 16px;
-    background: linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04), rgba(59,130,246,0.12));
+    background: linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04), rgba(79,70,229,0.16));
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
@@ -190,19 +192,19 @@ body {
   .orb {
     @apply absolute rounded-full blur-2xl;
     background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.22), rgba(255,255,255,0) 60%),
-      radial-gradient(circle at 70% 70%, rgba(59,130,246,0.25), rgba(59,130,246,0) 55%);
+      radial-gradient(circle at 70% 70%, rgba(79,70,229,0.25), rgba(79,70,229,0) 55%);
     animation: floaty 9s ease-in-out infinite;
   }
 
   .orb-2 {
     background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.18), rgba(255,255,255,0) 60%),
-      radial-gradient(circle at 70% 70%, rgba(16,185,129,0.22), rgba(16,185,129,0) 55%);
+      radial-gradient(circle at 70% 70%, rgba(96,165,250,0.20), rgba(96,165,250,0) 55%);
     animation-duration: 11s;
   }
 
   .orb-3 {
     background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.16), rgba(255,255,255,0) 60%),
-      radial-gradient(circle at 70% 70%, rgba(244,63,94,0.18), rgba(244,63,94,0) 55%);
+      radial-gradient(circle at 70% 70%, rgba(79,70,229,0.16), rgba(79,70,229,0) 55%);
     animation-duration: 13s;
   }
 

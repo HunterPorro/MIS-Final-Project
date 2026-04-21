@@ -35,7 +35,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-white/5 bg-zinc-950/80 backdrop-blur-xl print:hidden">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight text-white">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-700 text-lg font-bold text-emerald-950 shadow-lg shadow-emerald-900/40">
+            <span
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg font-bold text-white shadow-[0_18px_50px_-30px_rgba(0,0,0,0.85)]"
+              style={{ boxShadow: "0 18px 50px -30px rgba(79, 70, 229, 0.55)" }}
+            >
               FR
             </span>
             <span className="hidden sm:inline">Final Round</span>
