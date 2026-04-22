@@ -8,8 +8,8 @@ import json
 from pathlib import Path
 
 import torch
-from datasets import Dataset
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from datasets import Dataset, ClassLabel
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, f1_score
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
@@ -20,7 +20,8 @@ def load_jsonl(path: Path) -> Dataset:
             row = json.loads(line)
             texts.append(row["text"])
             labels.append(int(row["level"]))
-    return Dataset.from_dict({"text": texts, "label": labels})
+    ds = Dataset.from_dict({"text": texts, "label": labels})
+    return ds.cast_column("label", ClassLabel(num_classes=4))
 
 
 def main() -> None:
@@ -29,11 +30,12 @@ def main() -> None:
     ap.add_argument("--model-dir", type=Path, default=Path("models/technical"))
     ap.add_argument("--seed", type=int, default=42, help="Must match training split to mirror held-out set.")
     ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument("--save-json", type=Path, default=None, help="Optional path to write metrics JSON.")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ds = load_jsonl(args.data)
-    split = ds.train_test_split(test_size=0.1, seed=args.seed)
+    split = ds.train_test_split(test_size=0.1, seed=args.seed, stratify_by_column="label")
     eval_ds = split["test"]
 
     tokenizer = AutoTokenizer.from_pretrained(str(args.model_dir))
@@ -67,12 +69,27 @@ def main() -> None:
             labels_all.extend(batch_labels)
 
     acc = accuracy_score(labels_all, preds_all)
+    macro_f1 = f1_score(labels_all, preds_all, average="macro", zero_division=0)
     cm = confusion_matrix(labels_all, preds_all, labels=[0, 1, 2, 3])
     print(f"Eval samples: {len(labels_all)}")
     print(f"Accuracy: {acc:.4f}")
+    print(f"Macro F1: {macro_f1:.4f}")
     print("Confusion matrix (rows=true, cols=pred):")
     print(cm)
-    print(classification_report(labels_all, preds_all, target_names=level_names, digits=4, zero_division=0))
+    report = classification_report(labels_all, preds_all, target_names=level_names, digits=4, zero_division=0)
+    print(report)
+
+    if args.save_json is not None:
+        payload = {
+            "eval_samples": int(len(labels_all)),
+            "accuracy": float(acc),
+            "macro_f1": float(macro_f1),
+            "confusion_matrix": cm.tolist(),
+            "labels": level_names,
+        }
+        args.save_json.parent.mkdir(parents=True, exist_ok=True)
+        args.save_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"Wrote metrics JSON to {args.save_json}")
 
 
 if __name__ == "__main__":

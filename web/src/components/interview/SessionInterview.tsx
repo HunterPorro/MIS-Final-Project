@@ -88,6 +88,41 @@ async function blobWebmToWav(webm: Blob): Promise<Blob> {
   return wav;
 }
 
+function encodeWavMonoPCM16FromPCM(mono: Float32Array, sampleRate: number): Blob {
+  const bytesPerSample = 2;
+  const blockAlign = bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
+  const dataSize = mono.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+  };
+
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let o = 44;
+  for (let i = 0; i < mono.length; i++) {
+    const s = Math.max(-1, Math.min(1, mono[i] ?? 0));
+    view.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    o += 2;
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 async function parseError(res: Response): Promise<string> {
   const t = await res.text();
   if (t.includes("Vercel Security Checkpoint") || t.includes("vercel.link/security-checkpoint")) {
@@ -127,6 +162,9 @@ export function SessionInterview() {
   const audioStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const pcmRef = useRef<Float32Array[]>([]);
+  const sampleRateRef = useRef<number>(48000);
   const rafRef = useRef<number | null>(null);
   const [micLevel, setMicLevel] = useState(0); // 0..1
   const [noInputStreakMs, setNoInputStreakMs] = useState(0);
@@ -280,7 +318,19 @@ export function SessionInterview() {
     setRecording(false);
     if (tickRef.current !== undefined) window.clearInterval(tickRef.current);
     tickRef.current = undefined;
-    setAudioBlob(new Blob(chunksRef.current, { type: "audio/webm" }));
+    const chunks = pcmRef.current;
+    const total = chunks.reduce((n, c) => n + c.length, 0);
+    if (!total) {
+      setError("No audio captured. Check your mic permissions and input device.");
+    } else {
+      const mono = new Float32Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        mono.set(c, off);
+        off += c.length;
+      }
+      setAudioBlob(encodeWavMonoPCM16FromPCM(mono, sampleRateRef.current));
+    }
     setMicLevel(0);
     micEmaRef.current = 0;
     micBufRef.current = null;
@@ -291,6 +341,8 @@ export function SessionInterview() {
     }
     analyserRef.current?.disconnect();
     analyserRef.current = null;
+    processorRef.current?.disconnect();
+    processorRef.current = null;
     audioCtxRef.current?.close().catch(() => {});
     audioCtxRef.current = null;
     audioStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -323,6 +375,7 @@ export function SessionInterview() {
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
+      sampleRateRef.current = ctx.sampleRate;
       const src = ctx.createMediaStreamSource(s);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
@@ -331,6 +384,16 @@ export function SessionInterview() {
       analyserRef.current = analyser;
       micBufRef.current = createMicBuffers(analyser);
       micEmaRef.current = 0;
+
+      pcmRef.current = [];
+      const proc = ctx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = proc;
+      proc.onaudioprocess = (ev) => {
+        const input = ev.inputBuffer.getChannelData(0);
+        pcmRef.current.push(new Float32Array(input));
+      };
+      src.connect(proc);
+      proc.connect(ctx.destination);
 
       const rec = new MediaRecorder(s);
       recorderRef.current = rec;
@@ -373,12 +436,11 @@ export function SessionInterview() {
     }
     setSubmitting(true);
     try {
-      const wav = await blobWebmToWav(audioBlob);
       const fd = new FormData();
       fd.append("topic", topic);
       fd.append("question_id", q.id);
       fd.append("question_track", q.track);
-      fd.append("audio_wav", new File([wav], `${q.id}.wav`, { type: "audio/wav" }));
+      fd.append("audio_wav", new File([audioBlob], `${q.id}.wav`, { type: "audio/wav" }));
       if (snapshotFile) fd.append("image", snapshotFile);
       for (const gf of gazeFramesRef.current) fd.append("gaze_frames", gf);
       const ctrl = new AbortController();

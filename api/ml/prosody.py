@@ -15,15 +15,30 @@ class ProsodyResult:
     note: str
 
 
-def _pause_fraction(y: np.ndarray, sr: int, frame_ms: int = 25, hop_ms: int = 10) -> float:
-    try:
-        import librosa
-    except ImportError as e:
-        raise ImportError("librosa is required for prosody analysis") from e
+def _frame_rms(y: np.ndarray, *, frame: int, hop: int) -> np.ndarray:
+    """
+    Lightweight RMS frame extractor using NumPy only.
 
+    Returns shape (n_frames,) float32 array.
+    """
+    y = np.asarray(y, dtype=np.float32)
+    if y.size < frame or frame <= 0 or hop <= 0:
+        return np.asarray([], dtype=np.float32)
+    n_frames = 1 + (y.size - frame) // hop
+    # Copy-free framing (read-only view).
+    frames = np.lib.stride_tricks.as_strided(
+        y,
+        shape=(n_frames, frame),
+        strides=(y.strides[0] * hop, y.strides[0]),
+        writeable=False,
+    )
+    return np.sqrt(np.mean(frames * frames, axis=1) + 1e-12).astype(np.float32)
+
+
+def _pause_fraction(y: np.ndarray, sr: int, frame_ms: int = 25, hop_ms: int = 10) -> float:
     hop = max(1, int(sr * hop_ms / 1000))
     frame = max(1, int(sr * frame_ms / 1000))
-    rms = librosa.feature.rms(y=y, frame_length=frame, hop_length=hop)[0]
+    rms = _frame_rms(y, frame=frame, hop=hop)
     if rms.size == 0:
         return 0.0
     floor = float(np.percentile(rms, 15)) * 0.35
@@ -33,8 +48,8 @@ def _pause_fraction(y: np.ndarray, sr: int, frame_ms: int = 25, hop_ms: int = 10
 def _pitch_std_hz(y: np.ndarray, sr: int) -> float | None:
     try:
         import librosa
-    except ImportError as e:
-        raise ImportError("librosa is required for prosody analysis") from e
+    except ImportError:
+        return None
 
     if len(y) < sr // 4:
         return None
@@ -47,14 +62,9 @@ def _pitch_std_hz(y: np.ndarray, sr: int) -> float | None:
 
 
 def _rms_cv(y: np.ndarray, sr: int) -> float | None:
-    try:
-        import librosa
-    except ImportError as e:
-        raise ImportError("librosa is required for prosody analysis") from e
-
     hop = max(1, int(sr * 0.01))
     frame = max(1, int(sr * 0.025))
-    rms = librosa.feature.rms(y=y, frame_length=frame, hop_length=hop)[0]
+    rms = _frame_rms(y, frame=frame, hop=hop)
     if rms.size < 3:
         return None
     m = float(np.mean(rms)) + 1e-9

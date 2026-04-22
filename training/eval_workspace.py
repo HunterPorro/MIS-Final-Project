@@ -12,6 +12,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, models, transforms
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+import json
 
 
 def build_model(num_classes: int) -> nn.Module:
@@ -26,6 +27,7 @@ def main() -> None:
     ap.add_argument("--data-dir", type=Path, default=Path("training/data/workspace"))
     ap.add_argument("--checkpoint", type=Path, default=Path("models/workspace/workspace_cnn.pt"))
     ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument("--save-json", type=Path, default=None, help="Optional path to write metrics JSON.")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -66,7 +68,19 @@ def main() -> None:
     print(f"Accuracy: {acc:.4f}")
     print("Confusion matrix (rows=true, cols=pred):")
     print(cm)
-    print(classification_report(all_y, all_pred, target_names=classes, digits=4))
+    report = classification_report(all_y, all_pred, target_names=classes, digits=4, zero_division=0)
+    print(report)
+
+    if args.save_json is not None:
+        payload = {
+            "samples": int(len(all_y)),
+            "accuracy": float(acc),
+            "confusion_matrix": cm.tolist(),
+            "labels": classes,
+        }
+        args.save_json.parent.mkdir(parents=True, exist_ok=True)
+        args.save_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"Wrote metrics JSON to {args.save_json}")
 
 
 if __name__ == "__main__":
