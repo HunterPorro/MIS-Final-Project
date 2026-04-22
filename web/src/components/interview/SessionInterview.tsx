@@ -123,6 +123,16 @@ function encodeWavMonoPCM16FromPCM(mono: Float32Array, sampleRate: number): Blob
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+function rmsLevel(x: Float32Array): number {
+  if (x.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < x.length; i++) {
+    const v = x[i] ?? 0;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / x.length);
+}
+
 async function parseError(res: Response): Promise<string> {
   const t = await res.text();
   if (t.includes("Vercel Security Checkpoint") || t.includes("vercel.link/security-checkpoint")) {
@@ -176,6 +186,9 @@ export function SessionInterview() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reports, setReports] = useState<MockInterviewResponse[]>([]);
+  const autoSubmitRef = useRef<Blob | null>(null);
+  const [warmupStatus, setWarmupStatus] = useState<"idle" | "running" | "ok" | "error">("idle");
+  const [warmupNote, setWarmupNote] = useState<string | null>(null);
   const [awaitingNext, setAwaitingNext] = useState(false);
   const done = reports.length === sessionQuestions.length;
 
@@ -329,7 +342,13 @@ export function SessionInterview() {
         mono.set(c, off);
         off += c.length;
       }
-      setAudioBlob(encodeWavMonoPCM16FromPCM(mono, sampleRateRef.current));
+      const level = rmsLevel(mono);
+      if (level < 0.006) {
+        setError("Audio is almost silent. Select the correct input device and speak for at least 6–10 seconds, then try again.");
+        setAudioBlob(null);
+      } else {
+        setAudioBlob(encodeWavMonoPCM16FromPCM(mono, sampleRateRef.current));
+      }
     }
     setMicLevel(0);
     micEmaRef.current = 0;
@@ -427,7 +446,7 @@ export function SessionInterview() {
     }
   };
 
-  const submitAnswer = async () => {
+  const submitAnswer = useCallback(async () => {
     if (!q) return;
     setError(null);
     if (!audioBlob) {
@@ -444,7 +463,7 @@ export function SessionInterview() {
       if (snapshotFile) fd.append("image", snapshotFile);
       for (const gf of gazeFramesRef.current) fd.append("gaze_frames", gf);
       const ctrl = new AbortController();
-      const t = window.setTimeout(() => ctrl.abort(), 120_000);
+      const t = window.setTimeout(() => ctrl.abort(), 240_000);
       const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
       window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
@@ -466,14 +485,54 @@ export function SessionInterview() {
       const msg =
         e instanceof Error
           ? e.name === "AbortError"
-            ? "Request timed out. Check your backend host and try again."
+            ? "Request timed out. If this is the first run, the backend may still be loading Whisper—wait 30–60s and try again."
             : e.message
           : "Request failed";
       setError(msg);
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [audioBlob, q, reports.length, sessionQuestions.length, snapshotFile, topic]);
+
+  const runWarmupSelfTest = useCallback(async () => {
+    setWarmupStatus("running");
+    setWarmupNote(null);
+    try {
+      const warm = await apiFetch(apiUrl("/warmup"), { method: "POST" });
+      if (!warm.ok) throw new Error(`Warmup failed (HTTP ${warm.status})`);
+
+      const sr = 16000;
+      const mono = new Float32Array(sr);
+      const wav = encodeWavMonoPCM16FromPCM(mono, sr);
+      const fd = new FormData();
+      fd.append("topic", topic);
+      fd.append("question_id", "self-test");
+      fd.append("question_track", q?.track ?? "technical");
+      fd.append(
+        "transcript_override",
+        `[${topic}] I would structure the answer, name key drivers explicitly, and connect each step to why it changes the output. I would add one metric and a clear takeaway.`,
+      );
+      fd.append("audio_wav", new File([wav], "self-test.wav", { type: "audio/wav" }));
+      const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd });
+      if (!res.ok) throw new Error(await parseError(res));
+      setWarmupStatus("ok");
+      setWarmupNote("Backend warm. Self-test report generated.");
+    } catch (e) {
+      setWarmupStatus("error");
+      setWarmupNote(e instanceof Error ? e.message : "Warmup/self-test failed");
+    }
+  }, [q, topic]);
+
+  // Auto-submit once audio is captured (hands-free superday flow).
+  useEffect(() => {
+    if (recording) return;
+    if (awaitingNext) return;
+    if (submitting) return;
+    if (!audioBlob) return;
+    if (autoSubmitRef.current === audioBlob) return;
+    autoSubmitRef.current = audioBlob;
+    void submitAnswer();
+  }, [audioBlob, awaitingNext, recording, submitAnswer, submitting]);
 
   const goNextQuestion = () => {
     setAwaitingNext(false);
@@ -554,6 +613,38 @@ export function SessionInterview() {
           </span>
           <span className="meet-chip">{q?.track?.toUpperCase?.() ?? "—"}</span>
         </div>
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Backend</div>
+            <div className="mt-1 text-sm text-zinc-200">Warm up models and run a deterministic self-test.</div>
+          </div>
+          <button
+            type="button"
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10 disabled:opacity-60"
+            onClick={() => void runWarmupSelfTest()}
+            disabled={warmupStatus === "running"}
+          >
+            {warmupStatus === "running" ? "Warming…" : "Warmup + self-test"}
+          </button>
+        </div>
+        {warmupNote && (
+          <div
+            className={`mt-3 rounded-xl px-3 py-2 text-xs ${
+              warmupStatus === "ok"
+                ? "border border-emerald-500/20 bg-emerald-950/30 text-emerald-100"
+                : warmupStatus === "error"
+                  ? "border border-red-500/20 bg-red-950/30 text-red-100"
+                  : "border border-white/10 bg-black/30 text-zinc-300"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {warmupNote}
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
@@ -964,9 +1055,53 @@ export function SessionInterview() {
             <span className="meet-tooltip">Reset</span>
           </div>
         </div>
-        {error && (
+        {(error || reports.at(-1)?.warnings?.length) && (
           <div className="mt-2 max-w-[420px] rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">
-            {error}
+            {error ? <div>{error}</div> : null}
+            {reports.at(-1)?.warnings?.length ? (
+              <ul className="mt-2 space-y-1 text-xs text-red-100/90">
+                {reports
+                  .at(-1)
+                  ?.warnings?.slice(0, 3)
+                  .map((w) => (
+                    <li key={w} className="flex items-start gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-200/80" aria-hidden />
+                      <span>{w}</span>
+                    </li>
+                  ))}
+              </ul>
+            ) : null}
+          </div>
+        )}
+        {reports.at(-1) && (
+          <div className="mt-2 flex max-w-[420px] flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+              onClick={async () => {
+                const last = reports.at(-1);
+                if (!last) return;
+                try {
+                  await navigator.clipboard.writeText(
+                    JSON.stringify(
+                      {
+                        question_id: last.question_id,
+                        question_track: last.question_track,
+                        warnings: last.warnings ?? null,
+                        timings_ms: last.timings_ms ?? null,
+                        analysis_meta: last.analysis_meta ?? null,
+                      },
+                      null,
+                      2,
+                    ),
+                  );
+                } catch {
+                  // ignore
+                }
+              }}
+            >
+              Copy debug bundle
+            </button>
           </div>
         )}
       </div>

@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.config import settings
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.request_id import RequestIdMiddleware
-from api.routers import assess, mock_interview
+from api.routers import assess, mock_interview, warmup
 from api.services.runtime_models import preload
 
 
@@ -36,6 +36,7 @@ if settings.enable_rate_limit:
     app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_per_minute)
 app.include_router(assess.router, prefix="")
 app.include_router(mock_interview.router, prefix="")
+app.include_router(warmup.router, prefix="")
 
 
 @app.get("/health")

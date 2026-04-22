@@ -76,7 +76,12 @@ def preload() -> None:
         get_technical()
     except FileNotFoundError:
         pass
-    # ASR is optional and large; don't preload by default.
+    if settings.preload_asr:
+        try:
+            get_asr()
+        except Exception:
+            # ASR can require downloading weights; don't crash the service if it fails.
+            pass
 
 
 def model_status() -> dict[str, dict[str, object]]:

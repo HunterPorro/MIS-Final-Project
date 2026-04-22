@@ -104,3 +104,15 @@ class MockInterviewResponse(BaseModel):
     sentiment: SentimentInsight | None = None
     prosody: ProsodyInsight | None = None
     gaze: GazeInsight | None = None
+    timings_ms: dict[str, float] | None = Field(
+        default=None,
+        description="Stage timing breakdown in milliseconds (best-effort).",
+    )
+    analysis_meta: dict[str, float | bool | str] | None = Field(
+        default=None,
+        description="Misc analysis metadata (e.g., audio seconds, ASR trim).",
+    )
+    warnings: list[str] | None = Field(
+        default=None,
+        description="Non-fatal issues encountered during analysis (e.g., short transcript).",
+    )

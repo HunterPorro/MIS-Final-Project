@@ -121,6 +121,16 @@ function encodeWavMonoPCM16FromPCM(mono: Float32Array, sampleRate: number): Blob
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+function rmsLevel(x: Float32Array): number {
+  if (x.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < x.length; i++) {
+    const v = x[i] ?? 0;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / x.length);
+}
+
 async function parseError(res: Response): Promise<string> {
   const t = await res.text();
   if (t.includes("Vercel Security Checkpoint") || t.includes("vercel.link/security-checkpoint")) {
@@ -145,6 +155,8 @@ export function MockInterview() {
 
   type RightTab = "prompt" | "report" | "transcript";
   const [rightTab, setRightTab] = useState<RightTab>("prompt");
+  const [warmupStatus, setWarmupStatus] = useState<"idle" | "running" | "ok" | "error">("idle");
+  const [warmupNote, setWarmupNote] = useState<string | null>(null);
 
   // optional environment snapshot
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -166,6 +178,7 @@ export function MockInterview() {
   const pcmRef = useRef<Float32Array[]>([]);
   const sampleRateRef = useRef<number>(48000);
   const recordingRef = useRef(false);
+  const autoSubmitRef = useRef<Blob | null>(null);
 
   const MAX_SECONDS = 90;
   useEffect(() => {
@@ -363,7 +376,13 @@ export function MockInterview() {
         mono.set(c, off);
         off += c.length;
       }
-      setAudioBlob(encodeWavMonoPCM16FromPCM(mono, sampleRateRef.current));
+      const level = rmsLevel(mono);
+      if (level < 0.006) {
+        setError("Audio is almost silent. Select the correct input device and speak for at least 6–10 seconds, then try again.");
+        setAudioBlob(null);
+      } else {
+        setAudioBlob(encodeWavMonoPCM16FromPCM(mono, sampleRateRef.current));
+      }
     }
 
     setMicLevel(0);
@@ -420,7 +439,7 @@ export function MockInterview() {
       if (snapshotFile) fd.append("image", snapshotFile);
       for (const gf of gazeFramesRef.current) fd.append("gaze_frames", gf);
       const ctrl = new AbortController();
-      const t = window.setTimeout(() => ctrl.abort(), 120_000);
+      const t = window.setTimeout(() => ctrl.abort(), 240_000);
       const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
       window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
@@ -434,7 +453,7 @@ export function MockInterview() {
       const msg =
         e instanceof Error
           ? e.name === "AbortError"
-            ? "Request timed out. Check your backend host and try again."
+            ? "Request timed out. If this is the first run, the backend may still be loading Whisper—wait 30–60s and try again."
             : e.message
           : "Request failed";
       setError(msg);
@@ -442,6 +461,54 @@ export function MockInterview() {
       setSubmitting(false);
     }
   }, [audioBlob, question, snapshotFile, topic]);
+
+  const runWarmupSelfTest = useCallback(async () => {
+    setWarmupStatus("running");
+    setWarmupNote(null);
+    try {
+      const warm = await apiFetch(apiUrl("/warmup"), { method: "POST" });
+      if (!warm.ok) throw new Error(`Warmup failed (HTTP ${warm.status})`);
+      const warmJson = (await warm.json()) as { timings?: Record<string, unknown> };
+
+      // Deterministic dev self-test (does not rely on mic). Backend accepts transcript_override in dev.
+      const sr = 16000;
+      const mono = new Float32Array(sr); // 1s of silence; transcript_override drives analysis
+      const wav = encodeWavMonoPCM16FromPCM(mono, sr);
+      const fd = new FormData();
+      fd.append("topic", topic);
+      fd.append("question_id", "self-test");
+      fd.append("question_track", question.track);
+      fd.append(
+        "transcript_override",
+        `[${topic}] I would build sources & uses, adjust the balance sheet with purchase accounting, and assess accretion/dilution under a financing mix. I would sanity check synergies and integration risks.`,
+      );
+      fd.append("audio_wav", new File([wav], "self-test.wav", { type: "audio/wav" }));
+
+      const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd });
+      if (!res.ok) {
+        const msg = await parseError(res);
+        throw new Error(`Self-test failed: ${msg}`);
+      }
+      setWarmupStatus("ok");
+      setWarmupNote(
+        `Backend warm. ${warmJson.timings ? "Warmup timings captured." : "Warmup OK."} Self-test report generated.`,
+      );
+    } catch (e) {
+      setWarmupStatus("error");
+      setWarmupNote(e instanceof Error ? e.message : "Warmup/self-test failed");
+    }
+  }, [question.track, topic]);
+
+  // Auto-generate report once recording produces audio.
+  useEffect(() => {
+    if (recording) return;
+    if (!audioBlob) return;
+    if (submitting) return;
+    if (result) return;
+    if (autoSubmitRef.current === audioBlob) return;
+    autoSubmitRef.current = audioBlob;
+    submit();
+  }, [audioBlob, recording, result, submit, submitting]);
 
   useEffect(() => {
     let cancelled = false;
@@ -699,6 +766,38 @@ export function MockInterview() {
                 )}
               </div>
 
+              <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Backend</div>
+                  <button
+                    type="button"
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10 disabled:opacity-60"
+                    onClick={() => void runWarmupSelfTest()}
+                    disabled={warmupStatus === "running"}
+                  >
+                    {warmupStatus === "running" ? "Warming…" : "Warmup + self-test"}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                  Use this before demos. It loads ASR/models and confirms the report pipeline works without relying on your mic.
+                </p>
+                {warmupNote && (
+                  <div
+                    className={`mt-2 rounded-lg px-3 py-2 text-xs ${
+                      warmupStatus === "ok"
+                        ? "border border-emerald-500/20 bg-emerald-950/30 text-emerald-100"
+                        : warmupStatus === "error"
+                          ? "border border-red-500/20 bg-red-950/30 text-red-100"
+                          : "border border-white/10 bg-black/30 text-zinc-300"
+                    }`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {warmupNote}
+                  </div>
+                )}
+              </div>
+
               <details className="mt-4 meet-panel frame-gradient overflow-hidden">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-sm font-semibold text-white marker:content-none [&::-webkit-details-marker]:hidden">
                   Setup checklist
@@ -870,6 +969,31 @@ export function MockInterview() {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(
+                              JSON.stringify(
+                                {
+                                  question_id: result.question_id,
+                                  question_track: result.question_track,
+                                  warnings: result.warnings ?? null,
+                                  timings_ms: result.timings_ms ?? null,
+                                  analysis_meta: result.analysis_meta ?? null,
+                                },
+                                null,
+                                2,
+                              ),
+                            );
+                          } catch {
+                            // ignore
+                          }
+                        }}
+                      >
+                        Copy debug
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-zinc-200 hover:bg-white/10"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(
                               [
                                 `Prompt: ${question.title}`,
                                 "",
@@ -973,6 +1097,57 @@ export function MockInterview() {
                     </div>
                   </div>
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.transcript}</p>
+                  {result.timings_ms && (
+                    <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-300">
+                      <div className="font-semibold text-zinc-200">Timing breakdown</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {Object.entries(result.timings_ms)
+                          .filter(([k]) => k !== "total")
+                          .map(([k, v]) => (
+                            <span key={k} className="meet-chip">
+                              <span className="text-zinc-400">{k}</span>{" "}
+                              <span className="tabular-nums text-zinc-200">{Math.round(v)}ms</span>
+                            </span>
+                          ))}
+                        {"total" in result.timings_ms ? (
+                          <span className="meet-chip">
+                            <span className="text-zinc-400">total</span>{" "}
+                            <span className="tabular-nums text-zinc-200">{Math.round(result.timings_ms.total)}ms</span>
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                  {result.analysis_meta && (
+                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-300">
+                      <div className="font-semibold text-zinc-200">Analysis notes</div>
+                      <div className="mt-2 space-y-1.5 text-zinc-300">
+                        {result.analysis_meta.asr_trimmed === true && (
+                          <div>
+                            ASR used the first{" "}
+                            <span className="tabular-nums font-semibold text-zinc-100">
+                              {typeof result.analysis_meta.audio_seconds_asr_used === "number"
+                                ? `${Math.round(result.analysis_meta.audio_seconds_asr_used)}s`
+                                : "part"}
+                            </span>{" "}
+                            for speed (uploaded{" "}
+                            <span className="tabular-nums font-semibold text-zinc-100">
+                              {typeof result.analysis_meta.audio_seconds_uploaded === "number"
+                                ? `${Math.round(result.analysis_meta.audio_seconds_uploaded)}s`
+                                : "audio"}
+                            </span>
+                            ).
+                          </div>
+                        )}
+                        <div>
+                          ASR model:{" "}
+                          <span className="font-semibold text-zinc-100">
+                            {typeof result.analysis_meta.asr_model === "string" ? result.analysis_meta.asr_model : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1094,9 +1269,19 @@ export function MockInterview() {
             <span className="meet-tooltip">Reset</span>
           </div>
         </div>
-        {error && (
+        {(error || result?.warnings?.length) && (
           <div className="mt-2 max-w-[420px] rounded-xl border border-red-500/30 bg-red-950/40 px-3 py-2 text-sm text-red-100">
-            {error}
+            {error ? <div>{error}</div> : null}
+            {result?.warnings?.length ? (
+              <ul className="mt-2 space-y-1 text-xs text-red-100/90">
+                {result.warnings.slice(0, 3).map((w) => (
+                  <li key={w} className="flex items-start gap-2">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-200/80" aria-hidden />
+                    <span>{w}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         )}
       </div>

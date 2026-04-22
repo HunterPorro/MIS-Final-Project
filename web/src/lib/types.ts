@@ -35,6 +35,9 @@ export type MockInterviewResponse = AssessResponse & {
   question_id?: string | null;
   question_track?: string | null;
   transcript: string;
+  timings_ms?: Record<string, number> | null;
+  analysis_meta?: Record<string, number | boolean | string> | null;
+  warnings?: string[] | null;
   behavioral: {
     score: number;
     star_coverage: Record<string, boolean>;

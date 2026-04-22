@@ -6,6 +6,7 @@ from io import BytesIO
 
 from fastapi import APIRouter, File, Form, HTTPException, Header, Request, UploadFile
 from PIL import Image
+import numpy as np
 
 from api.config import settings
 from api.ml.behavioral import analyze_behavioral
@@ -54,6 +55,8 @@ async def mock_interview(
     - Runs workspace classifier if image provided; otherwise defaults to 'unknown' baseline.
     """
     t0 = time.perf_counter()
+    timings_ms: dict[str, float] = {}
+    warnings: list[str] = []
     if not topic or not str(topic).strip():
         raise HTTPException(status_code=400, detail="topic is required")
     t_norm = normalize_topic(topic)
@@ -76,20 +79,34 @@ async def mock_interview(
     try:
         audio_arr, sr = read_wav_bytes(raw_audio)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid WAV audio: {e}") from e
+        # Be tolerant: still return a report with warnings so the UI doesn't "brick".
+        warnings.append(f"Audio decode failed ({e}). Try re-recording or switching microphones.")
+        audio_arr = np.zeros(1, dtype=np.float32)
+        sr = 16000
+    original_audio_seconds = float(len(audio_arr) / sr) if sr > 0 else None
+    asr_trimmed = False
 
     # Transcribe (or accept explicit transcript for deterministic testing)
     transcript = (transcript_override or "").strip()
     if transcript:
         allowed = settings.allow_transcript_override or (
+            settings.environment == "dev" and settings.dev_allow_transcript_override
+        ) or (
             settings.admin_key is not None and x_admin_key is not None and x_admin_key == settings.admin_key
         )
         if not allowed:
             raise HTTPException(status_code=403, detail="transcript_override is disabled in this environment.")
     if not transcript:
+        # Long answers can make local ASR painfully slow on CPU. We cap the audio used for ASR.
+        if sr > 0:
+            max_samples = int(max(1, settings.max_asr_seconds) * sr)
+            if len(audio_arr) > max_samples:
+                audio_arr = audio_arr[:max_samples]
+                asr_trimmed = True
         t_asr0 = time.perf_counter()
         tr = asr.transcribe(audio_arr, sr)
         transcript = tr.text
+        timings_ms["asr"] = round((time.perf_counter() - t_asr0) * 1000, 1)
         logger.info(
             {
                 "request_id": getattr(request.state, "request_id", None),
@@ -99,21 +116,22 @@ async def mock_interview(
         )
     stripped = transcript.strip()
     if len(stripped) < 5:
+        # Don't hard-fail the whole request; return a coaching report with warnings.
         if not stripped:
-            raise HTTPException(
-                status_code=400,
-                detail="No speech detected in the audio. Check the microphone, reduce background noise, and speak clearly for a few seconds.",
+            warnings.append(
+                "No speech detected in the audio. Check the microphone input and record at least 6–10 seconds of clear speech."
             )
-        raise HTTPException(
-            status_code=400,
-            detail="Transcript too short—record at least a few seconds of clear speech.",
-        )
+        else:
+            warnings.append(
+                "Transcript is very short. Record at least 6–10 seconds of clear speech for more reliable scoring."
+            )
 
     # If transcript_override is used, audio duration is not meaningful for behavioral pace.
     audio_seconds = None if transcript_override else (float(len(audio_arr) / sr) if sr > 0 else None)
     t_beh0 = time.perf_counter()
     beh = analyze_behavioral(transcript, audio_seconds=audio_seconds)
     beh_res = BehavioralResult(**beh.__dict__)
+    timings_ms["behavioral"] = round((time.perf_counter() - t_beh0) * 1000, 1)
     logger.info(
         {
             "request_id": getattr(request.state, "request_id", None),
@@ -145,6 +163,7 @@ async def mock_interview(
         t_ws0 = time.perf_counter()
         ws_label, ws_conf, ws_idx = ws.predict_pil(pil)
         prof_prob = professional_probability(ws.classes, ws_label, ws_conf, ws_idx)
+        timings_ms["workspace"] = round((time.perf_counter() - t_ws0) * 1000, 1)
         logger.info(
             {
                 "request_id": getattr(request.state, "request_id", None),
@@ -175,6 +194,7 @@ async def mock_interview(
         coverage_score=cov_score,
         explanation_score=explanation_score,
     )
+    timings_ms["technical"] = round((time.perf_counter() - t_tech0) * 1000, 1)
     logger.info(
         {
             "request_id": getattr(request.state, "request_id", None),
@@ -284,6 +304,7 @@ async def mock_interview(
         gaze=gaze_insight,
     )
     narrative = await maybe_enrich_with_llm(narrative)
+    timings_ms["narrative"] = round((time.perf_counter() - t_narr0) * 1000, 1)
     logger.info(
         {
             "request_id": getattr(request.state, "request_id", None),
@@ -300,6 +321,7 @@ async def mock_interview(
         }
     )
 
+    timings_ms["total"] = round((time.perf_counter() - t0) * 1000, 1)
     return MockInterviewResponse(
         question_id=question_id,
         question_track=question_track,
@@ -312,5 +334,13 @@ async def mock_interview(
         sentiment=sentiment_insight,
         prosody=prosody_insight,
         gaze=gaze_insight,
+        timings_ms=timings_ms,
+        analysis_meta={
+            "audio_seconds_uploaded": original_audio_seconds or 0.0,
+            "audio_seconds_asr_used": (audio_seconds or 0.0),
+            "asr_trimmed": bool(asr_trimmed),
+            "asr_model": settings.asr_model,
+        },
+        warnings=warnings or None,
     )
 

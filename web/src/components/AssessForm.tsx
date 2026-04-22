@@ -149,6 +149,16 @@ function encodeWavMonoPCM16FromPCM(mono: Float32Array, sampleRate: number): Blob
   return new Blob([buffer], { type: "audio/wav" });
 }
 
+function rmsLevel(x: Float32Array): number {
+  if (x.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < x.length; i++) {
+    const v = x[i] ?? 0;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / x.length);
+}
+
 function friendlyError(status: number, message: string): string {
   if (status === 503) {
     return `${message} Train models with ./scripts/train_all.sh (see README) and ensure the API can load models/workspace/ and models/technical/.`;
@@ -177,9 +187,12 @@ export function AssessForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MockInterviewResponse | null>(null);
+  const autoSubmitRef = useRef<Blob | null>(null);
   const [health, setHealth] = useState<ApiHealth | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [warmupStatus, setWarmupStatus] = useState<"idle" | "running" | "ok" | "error">("idle");
+  const [warmupNote, setWarmupNote] = useState<string | null>(null);
   const copyTimerRef = useRef<number | undefined>(undefined);
 
   const stopCamera = useCallback(() => {
@@ -203,6 +216,35 @@ export function AssessForm() {
       );
     }
   }, []);
+
+  const runWarmupSelfTest = useCallback(async () => {
+    setWarmupStatus("running");
+    setWarmupNote(null);
+    try {
+      const warm = await apiFetch(apiUrl("/warmup"), { method: "POST" });
+      if (!warm.ok) throw new Error(`Warmup failed (HTTP ${warm.status})`);
+      // self-test: deterministic transcript in dev
+      const sr = 16000;
+      const mono = new Float32Array(sr);
+      const wav = encodeWavMonoPCM16FromPCM(mono, sr);
+      const fd = new FormData();
+      fd.append("topic", topic);
+      fd.append("question_id", "self-test");
+      fd.append("question_track", "technical");
+      fd.append(
+        "transcript_override",
+        `[${topic}] I would name key drivers explicitly, connect each step to why it changes the output, and end with a crisp takeaway.`,
+      );
+      fd.append("audio_wav", new File([wav], "self-test.wav", { type: "audio/wav" }));
+      const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd });
+      if (!res.ok) throw new Error(await parseErrorMessage(res));
+      setWarmupStatus("ok");
+      setWarmupNote("Backend warm. Self-test report generated.");
+    } catch (e) {
+      setWarmupStatus("error");
+      setWarmupNote(e instanceof Error ? e.message : "Warmup/self-test failed");
+    }
+  }, [topic]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -304,6 +346,12 @@ export function AssessForm() {
       mono.set(c, off);
       off += c.length;
     }
+    const level = rmsLevel(mono);
+    if (level < 0.006) {
+      setError("Audio is almost silent. Select the correct input device and speak for at least 6–10 seconds, then try again.");
+      setAudioBlob(null);
+      return;
+    }
     const wav = encodeWavMonoPCM16FromPCM(mono, sampleRateRef.current);
     setAudioBlob(wav);
   };
@@ -366,6 +414,18 @@ export function AssessForm() {
       setLoading(false);
     }
   };
+
+  // Auto-run analysis once recording is done.
+  useEffect(() => {
+    if (recording) return;
+    if (!audioBlob) return;
+    if (loading) return;
+    if (result) return;
+    if (autoSubmitRef.current === audioBlob) return;
+    autoSubmitRef.current = audioBlob;
+    const form = document.getElementById("assessment-form") as HTMLFormElement | null;
+    if (form) form.requestSubmit();
+  }, [audioBlob, loading, recording, result]);
 
   const copyAssessment = async () => {
     if (!result) return;
@@ -489,7 +549,39 @@ export function AssessForm() {
         </p>
       </aside>
 
-      <form onSubmit={onSubmit} className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-2 print:hidden">
+      <aside className="ui-card mx-auto mb-10 max-w-3xl p-5 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Backend</p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              Warm up models and run a deterministic self-test so you know analysis will generate before recording.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="ui-btn-ghost border-white/15 py-2 text-xs"
+            onClick={() => void runWarmupSelfTest()}
+            disabled={warmupStatus === "running"}
+          >
+            {warmupStatus === "running" ? "Warming…" : "Warmup + self-test"}
+          </button>
+        </div>
+        {warmupNote && (
+          <div
+            className={`mt-3 rounded-lg border px-4 py-3 text-xs ${
+              warmupStatus === "ok"
+                ? "border-emerald-500/20 bg-emerald-950/30 text-emerald-100"
+                : "border-amber-500/20 bg-amber-950/30 text-amber-100"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            {warmupNote}
+          </div>
+        )}
+      </aside>
+
+      <form id="assessment-form" onSubmit={onSubmit} className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-2 print:hidden">
         <section className="ui-card ui-card-hover space-y-5 p-6 sm:p-8">
           <div className="flex items-start gap-4">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#0F0F11] text-lg font-bold text-white ring-1 ring-zinc-800">
