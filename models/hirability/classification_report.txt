@@ -1,0 +1,14 @@
+Model: RandomForest
+CV macro-F1: 0.9353
+Test macro-F1: 0.9328
+
+              precision    recall  f1-score   support
+
+     No Hire       0.92      0.89      0.90       187
+  Needs Work       0.92      0.93      0.92       357
+   Lean Hire       0.93      0.96      0.95       413
+ Strong Hire       0.97      0.94      0.96       243
+
+    accuracy                           0.94      1200
+   macro avg       0.94      0.93      0.93      1200
+weighted avg       0.94      0.94      0.93      1200

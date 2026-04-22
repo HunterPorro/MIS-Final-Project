@@ -85,6 +85,14 @@ class GazeInsight(BaseModel):
     warning: str | None = None
 
 
+class HirabilityResult(BaseModel):
+    label: str
+    label_index: int
+    probabilities: dict[str, float]
+    top_factors: list[str]
+    method: str
+
+
 class AssessResponse(BaseModel):
     workspace: WorkspaceResult
     technical: TechnicalResult
@@ -104,3 +112,4 @@ class MockInterviewResponse(BaseModel):
     sentiment: SentimentInsight | None = None
     prosody: ProsodyInsight | None = None
     gaze: GazeInsight | None = None
+    hirability: HirabilityResult | None = None

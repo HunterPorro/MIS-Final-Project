@@ -1,0 +1,72 @@
+{
+  "model_type": "RandomForest",
+  "features": [
+    "env_score",
+    "technical_component",
+    "level_confidence",
+    "coverage_score",
+    "explanation_score",
+    "behavioral_score",
+    "star_hits",
+    "has_outcome_number",
+    "filler_per_100",
+    "hedge_hits",
+    "word_count",
+    "delivery_score"
+  ],
+  "labels": [
+    "No Hire",
+    "Needs Work",
+    "Lean Hire",
+    "Strong Hire"
+  ],
+  "feature_means": {
+    "env_score": 56.849849700927734,
+    "technical_component": 55.20505142211914,
+    "level_confidence": 0.585797131061554,
+    "coverage_score": 51.92924880981445,
+    "explanation_score": 49.80481719970703,
+    "behavioral_score": 55.10805892944336,
+    "star_hits": 2.1075000762939453,
+    "has_outcome_number": 0.4833333194255829,
+    "filler_per_100": 8.256844520568848,
+    "hedge_hits": 3.1779167652130127,
+    "word_count": 153.0093994140625,
+    "delivery_score": 55.15511703491211
+  },
+  "feature_stds": {
+    "env_score": 22.056730270385742,
+    "technical_component": 19.79109001159668,
+    "level_confidence": 0.18918108940124512,
+    "coverage_score": 20.17415428161621,
+    "explanation_score": 20.80489158630371,
+    "behavioral_score": 20.20047378540039,
+    "star_hits": 1.0840238332748413,
+    "has_outcome_number": 0.49972307682037354,
+    "filler_per_100": 7.928319454193115,
+    "hedge_hits": 2.6729369163513184,
+    "word_count": 56.624515533447266,
+    "delivery_score": 20.093164443969727
+  },
+  "feature_importances": {
+    "env_score": 0.029812393167616767,
+    "technical_component": 0.15399729994131103,
+    "level_confidence": 0.06461865775135879,
+    "coverage_score": 0.08947446667058771,
+    "explanation_score": 0.12406996922802115,
+    "behavioral_score": 0.15504000355091593,
+    "star_hits": 0.19233145245341776,
+    "has_outcome_number": 0.0016350648512375996,
+    "filler_per_100": 0.05786341438353233,
+    "hedge_hits": 0.023655254420372755,
+    "word_count": 0.025241827567878974,
+    "delivery_score": 0.08226019601374918
+  },
+  "cv_macro_f1": 0.9353126233404694,
+  "test_macro_f1": 0.9327583196437202,
+  "all_cv_scores": {
+    "LogisticRegression": 0.9323817814203966,
+    "RandomForest": 0.9353126233404694,
+    "GradientBoosting": 0.9340249525481662
+  }
+}

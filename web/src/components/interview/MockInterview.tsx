@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MockInterviewResponse, Topic } from "@/lib/types";
+import type { HirabilityResult, MockInterviewResponse, Topic } from "@/lib/types";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { waitForVideoDimensions } from "@/lib/video";
 import { QUESTION_BANK, type InterviewQuestion } from "@/components/interview/QuestionBank";
@@ -25,6 +25,74 @@ function Spinner() {
         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
       />
     </svg>
+  );
+}
+
+const HIRE_LABEL_STYLES: Record<string, { dot: string; badge: string }> = {
+  "No Hire":     { dot: "bg-red-400",    badge: "border-red-500/30 bg-red-950/40 text-red-200" },
+  "Needs Work":  { dot: "bg-amber-400",  badge: "border-amber-500/30 bg-amber-950/40 text-amber-200" },
+  "Lean Hire":   { dot: "bg-sky-400",    badge: "border-sky-500/30 bg-sky-950/40 text-sky-200" },
+  "Strong Hire": { dot: "bg-emerald-400", badge: "border-emerald-500/30 bg-emerald-950/40 text-emerald-200" },
+};
+const HIRE_BAR_COLORS: Record<string, string> = {
+  "No Hire":     "bg-red-400/70",
+  "Needs Work":  "bg-amber-400/70",
+  "Lean Hire":   "bg-sky-400/70",
+  "Strong Hire": "bg-emerald-400/70",
+};
+
+function HirabilityCard({ h }: { h: HirabilityResult }) {
+  const style = HIRE_LABEL_STYLES[h.label] ?? { dot: "bg-zinc-400", badge: "border-zinc-700 bg-zinc-900 text-zinc-200" };
+  const labels = ["No Hire", "Needs Work", "Lean Hire", "Strong Hire"];
+  return (
+    <div className="mt-8 rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Hirability</p>
+          <div className="mt-2 flex items-center gap-2">
+            <span className={`h-2.5 w-2.5 rounded-full ${style.dot}`} aria-hidden />
+            <span className={`rounded-full border px-3 py-1 text-sm font-semibold ${style.badge}`}>{h.label}</span>
+          </div>
+        </div>
+        <div className="text-right text-xs text-zinc-500">
+          {h.method === "model" ? "ML model" : "Rule-based"}
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-2">
+        {labels.map((lbl) => {
+          const pct = Math.round((h.probabilities[lbl] ?? 0) * 100);
+          return (
+            <div key={lbl}>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-zinc-400">{lbl}</span>
+                <span className="tabular-nums text-zinc-500">{pct}%</span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full border border-white/10 bg-white/5">
+                <div
+                  className={`h-full rounded-full transition-[width] duration-500 ${HIRE_BAR_COLORS[lbl] ?? "bg-zinc-400/60"}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {h.top_factors.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Key factors</p>
+          <ul className="mt-2 space-y-1.5">
+            {h.top_factors.map((f) => (
+              <li key={f} className="flex items-start gap-2 text-sm text-zinc-300">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-500" aria-hidden />
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1151,6 +1219,8 @@ export function MockInterview() {
               </div>
             </div>
           </div>
+
+          {result.hirability && <HirabilityCard h={result.hirability} />}
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-zinc-950/40 p-5">

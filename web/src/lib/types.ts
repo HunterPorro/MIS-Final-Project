@@ -1,5 +1,13 @@
 export type Topic = "M&A" | "LBO" | "Valuation";
 
+export type HirabilityResult = {
+  label: string;
+  label_index: number;
+  probabilities: Record<string, number>;
+  top_factors: string[];
+  method: string;
+};
+
 export type AssessResponse = {
   workspace: {
     label: string;
@@ -72,4 +80,5 @@ export type MockInterviewResponse = AssessResponse & {
     frames_used?: number | null;
     warning?: string | null;
   } | null;
+  hirability?: HirabilityResult | null;
 };

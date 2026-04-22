@@ -9,10 +9,12 @@ from PIL import Image
 
 from api.config import settings
 from api.ml.behavioral import analyze_behavioral
+from api.ml.hirability import predict_hirability
 from api.ml.technical_infer import LEVEL_LABELS, interview_technical, normalize_topic
 from api.schemas import (
     BehavioralResult,
     GazeInsight,
+    HirabilityResult,
     MockInterviewResponse,
     ProsodyInsight,
     SentimentInsight,
@@ -273,6 +275,29 @@ async def mock_interview(
         w_beh=w_beh,
         w_del=w_del,
     )
+
+    hire_pred = predict_hirability({
+        "env_score": round(prof_prob * 100, 1),
+        "technical_component": fit.technical_component,
+        "level_confidence": tech_res.level_confidence,
+        "coverage_score": tech_res.coverage_score or 50.0,
+        "explanation_score": tech_res.explanation_score or 50.0,
+        "behavioral_score": beh_res.score,
+        "star_hits": float(beh_res.star_hits or 0),
+        "has_outcome_number": 1.0 if beh_res.has_outcome_number else 0.0,
+        "filler_per_100": beh_res.filler_per_100 or 0.0,
+        "hedge_hits": float(beh_res.hedge_hits or 0),
+        "word_count": float(beh_res.word_count),
+        "delivery_score": delivery_score if delivery_score is not None else 50.0,
+    })
+    hire_res = HirabilityResult(
+        label=hire_pred.label,
+        label_index=hire_pred.label_index,
+        probabilities=hire_pred.probabilities,
+        top_factors=hire_pred.top_factors,
+        method=hire_pred.method,
+    )
+
     t_narr0 = time.perf_counter()
     narrative = build_narrative(
         w_res,
@@ -312,5 +337,6 @@ async def mock_interview(
         sentiment=sentiment_insight,
         prosody=prosody_insight,
         gaze=gaze_insight,
+        hirability=hire_res,
     )
 
