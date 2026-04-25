@@ -198,6 +198,18 @@ export function MockInterview() {
   const [result, setResult] = useState<MockInterviewResponse | null>(null);
   const [sessionResults, setSessionResults] = useState<MockInterviewResponse[]>([]);
   const [apiOk, setApiOk] = useState<boolean | null>(null);
+  const wakeOnceRef = useRef(false);
+
+  const wakeBackend = useCallback(() => {
+    if (wakeOnceRef.current) return;
+    wakeOnceRef.current = true;
+    const ctrl = new AbortController();
+    const t = window.setTimeout(() => ctrl.abort(), 8000);
+    // Fire-and-forget: this is only to wake a sleeping free-tier API.
+    void apiFetch(apiUrl("/health"), { method: "GET", signal: ctrl.signal, cache: "no-store" }).finally(() =>
+      window.clearTimeout(t),
+    );
+  }, []);
 
   const downloadJson = useCallback((filename: string, value: unknown) => {
     const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
@@ -292,6 +304,7 @@ export function MockInterview() {
   };
 
   const startRecording = useCallback(async () => {
+    wakeBackend();
     setError(null);
     setAudioBlob(null);
     setSeconds(0);
@@ -346,7 +359,7 @@ export function MockInterview() {
     } catch {
       setError("Mic access denied or unavailable.");
     }
-  }, []);
+  }, [wakeBackend]);
 
   const stopRecording = useCallback(() => {
     if (!recordingRef.current) return;

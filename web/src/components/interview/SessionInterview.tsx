@@ -247,6 +247,18 @@ export function SessionInterview() {
   const [snapshotFile, setSnapshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [apiOk, setApiOk] = useState<boolean | null>(null);
+  const wakeOnceRef = useRef(false);
+
+  const wakeBackend = useCallback(() => {
+    if (wakeOnceRef.current) return;
+    wakeOnceRef.current = true;
+    const ctrl = new AbortController();
+    const t = window.setTimeout(() => ctrl.abort(), 8000);
+    // Fire-and-forget: wake a sleeping free-tier API while the user records.
+    void apiFetch(apiUrl("/health"), { method: "GET", signal: ctrl.signal, cache: "no-store" }).finally(() =>
+      window.clearTimeout(t),
+    );
+  }, []);
 
   const stopCamera = useCallback(() => {
     camStream?.getTracks().forEach((t) => t.stop());
@@ -407,6 +419,7 @@ export function SessionInterview() {
   }, [recording, seconds]);
 
   const startRecording = async () => {
+    wakeBackend();
     setError(null);
     setAudioBlob(null);
     setSeconds(0);
