@@ -4,17 +4,12 @@ import threading
 import time
 from pathlib import Path
 
-import torch
-
 from api.config import settings
-from api.ml.asr import ASRTranscriber
-from api.ml.technical_infer import TechnicalAnalyzer
-from api.ml.workspace_infer import WorkspaceClassifier
 
 _lock = threading.Lock()
-_workspace: WorkspaceClassifier | None = None
-_technical: TechnicalAnalyzer | None = None
-_asr: ASRTranscriber | None = None
+_workspace = None
+_technical = None
+_asr = None
 _workspace_loaded_at: float | None = None
 _technical_loaded_at: float | None = None
 _asr_loaded_at: float | None = None
@@ -32,6 +27,9 @@ def get_workspace() -> WorkspaceClassifier:
     global _workspace, _workspace_loaded_at
     with _lock:
         if _workspace is None:
+            import torch
+            from api.ml.workspace_infer import WorkspaceClassifier
+
             p = workspace_path()
             if not p.is_file():
                 raise FileNotFoundError(
@@ -46,6 +44,9 @@ def get_technical() -> TechnicalAnalyzer:
     global _technical, _technical_loaded_at
     with _lock:
         if _technical is None:
+            import torch
+            from api.ml.technical_infer import TechnicalAnalyzer
+
             p = technical_path()
             if not (p / "config.json").is_file():
                 raise FileNotFoundError(
@@ -60,6 +61,8 @@ def get_asr() -> ASRTranscriber:
     global _asr, _asr_loaded_at
     with _lock:
         if _asr is None:
+            from api.ml.asr import ASRTranscriber
+
             # Keep this small for local dev. Upgrade to whisper-small later if desired.
             _asr = ASRTranscriber(model_name=settings.asr_model)
             _asr_loaded_at = time.time()

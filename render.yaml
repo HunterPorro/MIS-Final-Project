@@ -13,6 +13,8 @@ services:
         value: "prod"
       - key: REQUIRE_MODELS
         value: "false"
+      - key: PRELOAD_ASR
+        value: "false"
       - key: ENABLE_RATE_LIMIT
         value: "true"
       - key: RATE_LIMIT_PER_MINUTE
