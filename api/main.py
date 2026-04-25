@@ -17,7 +17,9 @@ from api.services.runtime_models import preload
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.environment == "prod" or settings.require_models:
+    # In prod we prefer a "degraded but up" service over a crash-loop.
+    # Set REQUIRE_MODELS=true to hard-fail startup if artifacts are missing.
+    if settings.require_models:
         verify_required_artifacts()
     preload()
     yield

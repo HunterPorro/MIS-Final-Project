@@ -34,14 +34,14 @@ This app is **split by design**: **Next.js on Vercel** (UI + BFF proxy) and **Fa
 
 ## API host (Render / Railway / Fly / Docker)
 
-1. **Build** from repo `Dockerfile` (includes `api/` + `models/`). **You must ship `models/`** (checkpoints) in the image or mount storage — empty `models/` ⇒ `/health` **degraded** and interview fails.
+1. **Build** from repo `Dockerfile` (includes `api/`). If `models/` isn’t present on the host/image, the API will boot in **degraded** mode and `/health` will show `ready: false`.
 2. **Start:** `uvicorn api.main:app --host 0.0.0.0 --port 8000` (already in Dockerfile `CMD`).
 3. **Environment:**
 
 | Variable | Example |
 |----------|---------|
 | `ENVIRONMENT` | `prod` |
-| `REQUIRE_MODELS` | `true` |
+| `REQUIRE_MODELS` | `true` (optional) |
 | `CORS_ORIGINS` | `https://your-app.vercel.app,https://your-custom-domain.com` |
 | `ENABLE_RATE_LIMIT` | `true` |
 | `RATE_LIMIT_PER_MINUTE` | `60` |
@@ -52,6 +52,10 @@ This app is **split by design**: **Next.js on Vercel** (UI + BFF proxy) and **Fa
 
 4. **Health:** `GET /health` — `ready: true` only when workspace + technical artifacts exist.
 5. **Render:** Edit `render.yaml` `CORS_ORIGINS` and connect the repo; set secrets in the dashboard.
+
+Notes:
+
+- Set `REQUIRE_MODELS=true` if you want the API to **fail fast** during startup when artifacts are missing (recommended once you’ve shipped `models/` into the container or mounted it).
 
 ## Testing before you ship
 

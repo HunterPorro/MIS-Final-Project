@@ -12,7 +12,7 @@ services:
       - key: ENVIRONMENT
         value: "prod"
       - key: REQUIRE_MODELS
-        value: "true"
+        value: "false"
       - key: ENABLE_RATE_LIMIT
         value: "true"
       - key: RATE_LIMIT_PER_MINUTE
