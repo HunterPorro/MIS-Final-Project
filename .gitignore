@@ -10,10 +10,24 @@ dist/
 build/
 
 # ML artifacts (train to regenerate)
-models/*.pt
-models/workspace/
-models/technical/
+# We commit ONLY the minimal runtime artifacts needed for production.
+# Large training checkpoints remain ignored to keep the repo lean.
+models/**
 !models/.gitkeep
+!models/workspace/
+!models/workspace/workspace_cnn.pt
+!models/technical/
+!models/technical/config.json
+!models/technical/model.safetensors
+!models/technical/special_tokens_map.json
+!models/technical/tokenizer.json
+!models/technical/tokenizer_config.json
+!models/technical/vocab.txt
+
+# Ignore training outputs / duplicate weights
+models/technical/trainer_output/
+models/technical/pytorch_model.bin
+models/technical/training_args.bin
 
 # Node
 node_modules/
