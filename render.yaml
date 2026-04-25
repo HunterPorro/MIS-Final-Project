@@ -4,13 +4,15 @@ services:
     env: docker
     dockerfilePath: ./Dockerfile
     autoDeploy: true
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: ENVIRONMENT
         value: "prod"
+      - key: REQUIRE_MODELS
+        value: "true"
       - key: ENABLE_RATE_LIMIT
         value: "true"
       - key: RATE_LIMIT_PER_MINUTE
@@ -19,5 +21,6 @@ services:
         value: "false"
       - key: CORS_ORIGINS
         value: "https://YOUR-VERCEL-DOMAIN.vercel.app"
-      # Set OPENAI_API_KEY / ADMIN_KEY in Render dashboard (secrets)
+      # Optional persistence (Supabase Postgres): set DATABASE_URL in Render dashboard (secret)
+      # Set GOOGLE_API_KEY / OPENAI_API_KEY / ADMIN_KEY in Render dashboard (secrets)
 

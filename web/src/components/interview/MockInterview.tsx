@@ -6,6 +6,7 @@ import { apiFetch, apiUrl } from "@/lib/api";
 import { waitForVideoDimensions } from "@/lib/video";
 import { QUESTION_BANK, type InterviewQuestion } from "@/components/interview/QuestionBank";
 import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
+import { AnalysisTimingChips } from "@/components/ui/AnalysisTimingChips";
 import { computeMicLevel, createMicBuffers, emaNext, type MicAnalysisBuffers } from "@/lib/micLevel";
 import { captureVideoJpegFile } from "@/lib/gazeFrames";
 
@@ -248,12 +249,12 @@ export function MockInterview() {
     const v = videoRef.current;
     if (!v) return;
     const snap = async () => {
-      if (gazeFramesRef.current.length >= 6) return;
+      if (gazeFramesRef.current.length >= 5) return;
       const f = await captureVideoJpegFile(v);
       if (f) gazeFramesRef.current.push(f);
     };
     void snap();
-    gazeIntervalRef.current = window.setInterval(() => void snap(), 2400);
+    gazeIntervalRef.current = window.setInterval(() => void snap(), 2000);
     return () => {
       if (gazeIntervalRef.current !== undefined) window.clearInterval(gazeIntervalRef.current);
       gazeIntervalRef.current = undefined;
@@ -283,22 +284,11 @@ export function MockInterview() {
       setError("Camera preview is not ready yet. Wait a moment after turning the camera on, then try Capture again.");
       return;
     }
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const file = new File([blob], "environment.jpg", { type: "image/jpeg" });
-        setSnapshotFile(file);
-        // Keep camera running (virtual-interview style); live preview stays on.
-      },
-      "image/jpeg",
-      0.92,
-    );
+    const file = await captureVideoJpegFile(video, 0.82);
+    if (file) {
+      const renamed = new File([file], "environment.jpg", { type: "image/jpeg" });
+      setSnapshotFile(renamed);
+    }
   };
 
   const startRecording = useCallback(async () => {
@@ -439,7 +429,7 @@ export function MockInterview() {
       if (snapshotFile) fd.append("image", snapshotFile);
       for (const gf of gazeFramesRef.current) fd.append("gaze_frames", gf);
       const ctrl = new AbortController();
-      const t = window.setTimeout(() => ctrl.abort(), 240_000);
+      const t = window.setTimeout(() => ctrl.abort(), 360_000);
       const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
       window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
@@ -514,7 +504,10 @@ export function MockInterview() {
     let cancelled = false;
     const run = async () => {
       try {
-        const res = await apiFetch(apiUrl("/health"), { method: "GET" });
+        const ctrl = new AbortController();
+        const t = window.setTimeout(() => ctrl.abort(), 8000);
+        const res = await apiFetch(apiUrl("/health"), { method: "GET", signal: ctrl.signal });
+        window.clearTimeout(t);
         if (cancelled) return;
         setApiOk(res.ok);
       } catch {
@@ -708,7 +701,11 @@ export function MockInterview() {
                   <span className="evaluate-ring-2" />
                 </div>
                 <p className="text-sm font-semibold tracking-tight text-zinc-50">Evaluating</p>
-                <AnalysisProgress variant="mock" className="mx-auto" />
+                <AnalysisProgress
+                  variant="mock"
+                  className="mx-auto"
+                  helpText="First run can be slower while models load. ASR uses a capped slice of long answers for speed."
+                />
               </div>
             )}
           </div>
@@ -843,7 +840,11 @@ export function MockInterview() {
               {submitting ? (
                 <div className="meet-section">
                   <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Generating</div>
-                  <AnalysisProgress variant="mock" className="mt-3" />
+                  <AnalysisProgress
+                    variant="mock"
+                    className="mt-3"
+                    helpText="First run can be slower while models load. ASR uses a capped slice of long answers for speed."
+                  />
                   <div className="mt-4 space-y-2">
                     <div className="h-2 w-full rounded-full bg-white/5" />
                     <div className="h-2 w-11/12 rounded-full bg-white/5" />
@@ -1047,6 +1048,7 @@ export function MockInterview() {
                       </button>
                     </div>
                     <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">{result.narrative}</p>
+                    {result.timings_ms ? <AnalysisTimingChips timings={result.timings_ms} /> : null}
                   </div>
                 </div>
               )}
@@ -1058,7 +1060,11 @@ export function MockInterview() {
               {submitting ? (
                 <div className="meet-section">
                   <div className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Generating</div>
-                  <AnalysisProgress variant="mock" className="mt-3" />
+                  <AnalysisProgress
+                    variant="mock"
+                    className="mt-3"
+                    helpText="First run can be slower while models load. ASR uses a capped slice of long answers for speed."
+                  />
                   <div className="mt-4 space-y-2">
                     <div className="h-2 w-full rounded-full bg-white/5" />
                     <div className="h-2 w-11/12 rounded-full bg-white/5" />
@@ -1309,6 +1315,31 @@ export function MockInterview() {
             </div>
           </div>
 
+          {result.recommendations?.length ? (
+            <div className="mt-8 rounded-2xl border border-white/10 bg-zinc-950/40 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Next practice plan</p>
+                <p className="text-xs text-zinc-500">
+                  {result.analysis_meta?.google_enriched === true ? "Enhanced" : "Standard"}
+                </p>
+              </div>
+              <ul className="mt-3 space-y-2 text-sm text-zinc-200">
+                {result.recommendations.slice(0, 7).map((s) => (
+                  <li key={s} className="flex gap-2">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+                    <span className="text-zinc-200">{s}</span>
+                  </li>
+                ))}
+              </ul>
+              {result.analysis_meta?.google_enriched !== true && result.analysis_meta?.google_skip_reason ? (
+                <p className="mt-3 text-xs text-zinc-500">
+                  Tip: set <code className="text-zinc-300">GOOGLE_API_KEY</code> to enhance recommendations (
+                  {String(result.analysis_meta.google_skip_reason)}).
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-6 flex flex-wrap items-baseline gap-x-6 gap-y-2 text-sm text-zinc-400">
             <span>
               Technical read · <span className="text-zinc-200">{result.technical.expertise_label}</span>{" "}
@@ -1374,6 +1405,62 @@ export function MockInterview() {
                     <li className="text-zinc-500">No major behavioral flags.</li>
                   )}
                 </ul>
+                {result.behavioral.question_coverage && (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-300">
+                    <div className="text-[0.65rem] font-semibold uppercase tracking-widest text-zinc-500">
+                      Question-specific beats
+                      {result.behavioral.question_template ? (
+                        <span className="ml-2 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 font-mono text-[0.65rem] text-zinc-400">
+                          {result.behavioral.question_template}
+                        </span>
+                      ) : null}
+                    </div>
+                    {result.behavioral.top_fixes?.length ? (
+                      <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/90">
+                        <div className="text-[0.65rem] font-semibold uppercase tracking-widest text-amber-200/80">
+                          Top fixes
+                        </div>
+                        <ul className="mt-2 space-y-1">
+                          {result.behavioral.top_fixes.slice(0, 3).map((s) => (
+                            <li key={s} className="flex items-start gap-2">
+                              <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-200/80" aria-hidden />
+                              <span>{s}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {result.behavioral.question_outline?.length ? (
+                      <div className="mt-3 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-300">
+                        <div className="text-[0.65rem] font-semibold uppercase tracking-widest text-zinc-500">
+                          Ideal outline
+                        </div>
+                        <ol className="mt-2 space-y-1">
+                          {result.behavioral.question_outline.slice(0, 6).map((s) => (
+                            <li key={s} className="flex items-start gap-2">
+                              <span className="mt-0.5 font-mono text-zinc-500">•</span>
+                              <span>{s}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    ) : null}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {Object.entries(result.behavioral.question_coverage).map(([k, v]) => (
+                        <span
+                          key={k}
+                          className={`rounded-full border px-3 py-1 ${
+                            v
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                              : "border-zinc-700 bg-zinc-900/30 text-zinc-400"
+                          }`}
+                        >
+                          {k.replace(/_/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Filler words</p>

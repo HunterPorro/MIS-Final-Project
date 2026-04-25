@@ -5,6 +5,9 @@ python-multipart==0.0.17
 pydantic==2.10.3
 pydantic-settings==2.6.1
 
+# Persistence (Supabase Postgres compatible)
+psycopg[binary]>=3.2.0
+
 # ML (versions aligned for modern Python; adjust if your platform pins differ)
 torch>=2.6.0
 torchvision>=0.21.0
@@ -23,3 +26,4 @@ soundfile==0.12.1
 
 # Optional narrative quality (install if used)
 openai==1.57.4
+httpx==0.28.1

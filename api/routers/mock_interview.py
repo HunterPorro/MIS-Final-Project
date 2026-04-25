@@ -4,6 +4,7 @@ import logging
 import time
 from io import BytesIO
 
+import anyio
 from fastapi import APIRouter, File, Form, HTTPException, Header, Request, UploadFile
 from PIL import Image
 import numpy as np
@@ -21,7 +22,7 @@ from api.schemas import (
     WorkspaceResult,
 )
 from api.services.fit import compute_fit
-from api.services.narrative import build_narrative, maybe_enrich_with_llm
+from api.services.narrative import build_narrative, maybe_enrich_with_llm_meta
 from api.services.runtime_models import get_asr, get_technical, get_workspace
 from api.utils.audio import read_wav_bytes
 from api.utils.scoring import professional_probability
@@ -35,12 +36,30 @@ MAX_GAZE_FRAME_BYTES = 2 * 1024 * 1024
 MAX_GAZE_FRAMES = 8
 
 
+async def _run_cpu_bound(label: str, fn, *args, timeout_s: int):
+    t0 = time.perf_counter()
+    try:
+        with anyio.fail_after(timeout_s):
+            return await anyio.to_thread.run_sync(fn, *args)
+    except TimeoutError as e:
+        raise HTTPException(
+            status_code=504,
+            detail=f"{label} timed out after {timeout_s}s. Try a shorter recording or run warmup first.",
+        ) from e
+    finally:
+        dt = round((time.perf_counter() - t0) * 1000, 1)
+        logger.info(
+            {"event": f"{label}_thread_ms", "ms": dt},
+        )
+
+
 @router.post("/mock-interview", response_model=MockInterviewResponse)
 async def mock_interview(
     request: Request,
     topic: str = Form(...),
     question_id: str | None = Form(default=None),
     question_track: str | None = Form(default=None),
+    session_id: str | None = Form(default=None),
     transcript_override: str | None = Form(default=None),
     audio_wav: UploadFile = File(...),
     image: UploadFile | None = File(default=None),
@@ -104,7 +123,7 @@ async def mock_interview(
                 audio_arr = audio_arr[:max_samples]
                 asr_trimmed = True
         t_asr0 = time.perf_counter()
-        tr = asr.transcribe(audio_arr, sr)
+        tr = await _run_cpu_bound("asr", asr.transcribe, audio_arr, sr, timeout_s=max(20, settings.request_timeout_s))
         transcript = tr.text
         timings_ms["asr"] = round((time.perf_counter() - t_asr0) * 1000, 1)
         logger.info(
@@ -129,7 +148,7 @@ async def mock_interview(
     # If transcript_override is used, audio duration is not meaningful for behavioral pace.
     audio_seconds = None if transcript_override else (float(len(audio_arr) / sr) if sr > 0 else None)
     t_beh0 = time.perf_counter()
-    beh = analyze_behavioral(transcript, audio_seconds=audio_seconds)
+    beh = analyze_behavioral(transcript, audio_seconds=audio_seconds, question_id=question_id)
     beh_res = BehavioralResult(**beh.__dict__)
     timings_ms["behavioral"] = round((time.perf_counter() - t_beh0) * 1000, 1)
     logger.info(
@@ -161,7 +180,15 @@ async def mock_interview(
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid image: {e}") from e
         t_ws0 = time.perf_counter()
-        ws_label, ws_conf, ws_idx = ws.predict_pil(pil)
+
+        def _ws_predict():
+            return ws.predict_pil(pil)
+
+        ws_label, ws_conf, ws_idx = await _run_cpu_bound(
+            "workspace",
+            _ws_predict,
+            timeout_s=min(60, settings.request_timeout_s),
+        )
         prof_prob = professional_probability(ws.classes, ws_label, ws_conf, ws_idx)
         timings_ms["workspace"] = round((time.perf_counter() - t_ws0) * 1000, 1)
         logger.info(
@@ -177,8 +204,14 @@ async def mock_interview(
     # Technical / communication analysis on transcript (behavioral prompts skip finance classifier — OOD-safe)
     t_tech0 = time.perf_counter()
     is_behavioral = (question_track or "").strip().lower() == "behavioral"
-    level, level_conf, skills, missed, coverage, explained, cov_score, explanation_score, summ = interview_technical(
-        t_norm, transcript, question_track, tech
+    level, level_conf, skills, missed, coverage, explained, cov_score, explanation_score, summ = await _run_cpu_bound(
+        "technical",
+        interview_technical,
+        t_norm,
+        transcript,
+        question_track,
+        tech,
+        timeout_s=max(20, settings.request_timeout_s),
     )
     tech_topic = "Behavioral" if is_behavioral else t_norm
     tech_res = TechnicalResult(
@@ -251,8 +284,6 @@ async def mock_interview(
 
     gaze_uploads = gaze_frames or []
     if gaze_uploads:
-        from api.ml.gaze import analyze_gaze_sequence
-
         pil_gaze: list[Image.Image] = []
         for uf in gaze_uploads[:MAX_GAZE_FRAMES]:
             try:
@@ -267,7 +298,17 @@ async def mock_interview(
             except Exception as e:
                 logger.warning("gaze frame decode failed: %s", e)
         if pil_gaze:
-            gr = analyze_gaze_sequence(pil_gaze)
+
+            def _gaze_run():
+                from api.ml.gaze import analyze_gaze_sequence
+
+                return analyze_gaze_sequence(pil_gaze)
+
+            gr = await _run_cpu_bound(
+                "gaze",
+                _gaze_run,
+                timeout_s=min(45, settings.request_timeout_s),
+            )
             gaze_insight = GazeInsight(
                 status=gr.status,
                 pattern=gr.pattern,
@@ -303,7 +344,9 @@ async def mock_interview(
         prosody=prosody_insight,
         gaze=gaze_insight,
     )
-    narrative = await maybe_enrich_with_llm(narrative)
+    narrative, llm_meta = await maybe_enrich_with_llm_meta(narrative)
+    if llm_meta.get("skip_reason") == "llm_timeout":
+        warnings.append("Narrative enrichment timed out; returning the base narrative.")
     timings_ms["narrative"] = round((time.perf_counter() - t_narr0) * 1000, 1)
     logger.info(
         {
@@ -322,7 +365,7 @@ async def mock_interview(
     )
 
     timings_ms["total"] = round((time.perf_counter() - t0) * 1000, 1)
-    return MockInterviewResponse(
+    resp = MockInterviewResponse(
         question_id=question_id,
         question_track=question_track,
         transcript=transcript,
@@ -340,7 +383,47 @@ async def mock_interview(
             "audio_seconds_asr_used": (audio_seconds or 0.0),
             "asr_trimmed": bool(asr_trimmed),
             "asr_model": settings.asr_model,
+            "llm_enriched": bool(llm_meta.get("enriched")),
+            "llm_skip_reason": (llm_meta.get("skip_reason") or ""),
         },
         warnings=warnings or None,
     )
+
+    # Future recommendations (deterministic + optional Google Gemini enrichment).
+    try:
+        from api.services.recommendations import build_future_recommendations
+
+        recs, rec_meta = await build_future_recommendations(resp)
+        resp.recommendations = recs
+        if resp.analysis_meta is not None:
+            resp.analysis_meta["google_enriched"] = bool(rec_meta.get("enriched"))
+            resp.analysis_meta["google_skip_reason"] = str(rec_meta.get("skip_reason") or "")
+    except Exception as e:
+        logger.warning("recommendations failed: %s", e)
+
+    if session_id:
+        try:
+            from api.services.db import PersistenceDisabled, add_response
+
+            add_response(
+                session_id=session_id,
+                question_id=question_id,
+                question_track=question_track,
+                topic=t_norm,
+                transcript=transcript,
+                workspace=w_res.model_dump(),
+                technical=tech_res.model_dump(),
+                behavioral=beh_res.model_dump(),
+                fit=fit.model_dump(),
+                narrative=narrative,
+                warnings=warnings or None,
+                timings_ms=timings_ms,
+            )
+        except PersistenceDisabled:
+            # Persistence is optional; don't fail the main interview flow.
+            pass
+        except Exception as e:
+            logger.warning("failed to persist session response: %s", e)
+
+    return resp
 

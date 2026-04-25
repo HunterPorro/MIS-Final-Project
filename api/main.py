@@ -4,16 +4,21 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from api.config import settings
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.request_id import RequestIdMiddleware
-from api.routers import assess, mock_interview, warmup
+from api.routers import assess, mock_interview, sessions, warmup
+from api.services.artifacts import artifact_fingerprints, verify_required_artifacts
 from api.services.runtime_models import preload
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.environment == "prod" or settings.require_models:
+        verify_required_artifacts()
     preload()
     yield
 
@@ -36,7 +41,23 @@ if settings.enable_rate_limit:
     app.add_middleware(RateLimitMiddleware, requests_per_minute=settings.rate_limit_per_minute)
 app.include_router(assess.router, prefix="")
 app.include_router(mock_interview.router, prefix="")
+app.include_router(sessions.router, prefix="")
 app.include_router(warmup.router, prefix="")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    rid = getattr(request.state, "request_id", None)
+    # Always return JSON so the UI can show a useful message instead of “Internal Server Error”.
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "request_id": rid,
+            "hint": "Check API logs for this request_id.",
+        },
+        headers={"x-request-id": rid} if rid else None,
+    )
 
 
 @app.get("/health")
@@ -73,6 +94,7 @@ def health(response: Response):
             "workspace_checkpoint": str(workspace_path()) if ws_ok else None,
             "technical_model_dir": str(technical_path()) if tech_ok else None,
         },
+        "artifact_fingerprints": artifact_fingerprints() if (ws_ok and tech_ok) else {},
     }
 
 

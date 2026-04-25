@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BrandMark, BrandWordmark } from "@/components/brand/BrandMark";
+import { ApiStatusBar } from "@/components/layout/ApiStatusBar";
 
 const nav = [
   { href: "/", label: "Home" },
@@ -124,6 +125,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </header>
+
+      <ApiStatusBar />
 
       <main className="relative w-full min-w-0 flex-1">{children}</main>
     </div>

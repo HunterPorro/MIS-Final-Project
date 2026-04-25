@@ -29,9 +29,12 @@ type Variant = keyof typeof STEPS;
 export function AnalysisProgress({
   variant,
   className = "",
+  helpText,
 }: {
   variant: Variant;
   className?: string;
+  /** Extra hint under the progress list (e.g. first-run / ASR limits). */
+  helpText?: string;
 }) {
   const steps = STEPS[variant];
   const [phase, setPhase] = useState(0);
@@ -66,6 +69,7 @@ export function AnalysisProgress({
       {reduceMotion ? (
         <p className="mt-3 text-xs leading-relaxed text-zinc-400">
           Running analysis (transcription, scoring, narrative). This can take up to a couple of minutes on first load.
+          {helpText ? <span className="mt-2 block text-zinc-500">{helpText}</span> : null}
         </p>
       ) : (
         <ul className="mt-3 space-y-1.5">
@@ -90,6 +94,9 @@ export function AnalysisProgress({
           })}
         </ul>
       )}
+      {!reduceMotion && helpText ? (
+        <p className="mt-2 text-[0.7rem] leading-relaxed text-zinc-500">{helpText}</p>
+      ) : null}
     </div>
   );
 }

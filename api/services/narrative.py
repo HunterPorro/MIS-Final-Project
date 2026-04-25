@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 
+import anyio
+
 from api.schemas import (
     BehavioralResult,
     FitResult,
@@ -113,12 +115,24 @@ def build_narrative(
 
 
 async def maybe_enrich_with_llm(narrative: str) -> str:
-    """Optional OpenAI polish; returns original on failure or missing key."""
+    text, _meta = await maybe_enrich_with_llm_meta(narrative)
+    return text
+
+
+async def maybe_enrich_with_llm_meta(narrative: str) -> tuple[str, dict[str, str | bool | None]]:
+    """Optional OpenAI polish; returns original on failure/missing key.
+
+    Returns (narrative, meta) where meta includes:
+    - enriched: bool
+    - skip_reason: str|None
+    - error: str|None
+    """
     from api.config import settings
 
     if not settings.openai_api_key:
-        return narrative
-    try:
+        return narrative, {"enriched": False, "skip_reason": "missing_openai_api_key", "error": None}
+
+    def _call_openai(prompt: str) -> str:
         from openai import OpenAI
 
         client = OpenAI(api_key=settings.openai_api_key)
@@ -132,13 +146,22 @@ async def maybe_enrich_with_llm(narrative: str) -> str:
                     "(3) two prioritized improvements. Preserve every numeric score verbatim. "
                     "Professional, encouraging tone. No medical or legal claims.",
                 },
-                {"role": "user", "content": narrative},
+                {"role": "user", "content": prompt},
             ],
             temperature=0.25,
             max_tokens=650,
         )
-        text = (r.choices[0].message.content or "").strip()
-        return text or narrative
+        return (r.choices[0].message.content or "").strip()
+
+    try:
+        timeout_s = max(8, int(settings.narrative_timeout_s))
+        with anyio.fail_after(timeout_s):
+            text = await anyio.to_thread.run_sync(_call_openai, narrative)
+        if not text:
+            return narrative, {"enriched": False, "skip_reason": "empty_llm_response", "error": None}
+        return text, {"enriched": True, "skip_reason": None, "error": None}
+    except TimeoutError:
+        return narrative, {"enriched": False, "skip_reason": "llm_timeout", "error": None}
     except Exception as e:
         logger.warning("LLM narrative enrich skipped: %s", e)
-        return narrative
+        return narrative, {"enriched": False, "skip_reason": "llm_error", "error": str(e)}

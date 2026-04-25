@@ -36,6 +36,10 @@ class TechnicalResult(BaseModel):
 class BehavioralResult(BaseModel):
     score: float
     star_coverage: dict[str, bool]
+    question_template: str | None = None
+    question_coverage: dict[str, bool] | None = None
+    question_outline: list[str] | None = None
+    top_fixes: list[str] | None = None
     filler_words: dict[str, int]
     filler_total: int
     word_count: int
@@ -112,7 +116,29 @@ class MockInterviewResponse(BaseModel):
         default=None,
         description="Misc analysis metadata (e.g., audio seconds, ASR trim).",
     )
+    recommendations: list[str] | None = Field(
+        default=None,
+        description="Practice recommendations for what to do next (deterministic + optional LLM-enriched).",
+    )
     warnings: list[str] | None = Field(
         default=None,
         description="Non-fatal issues encountered during analysis (e.g., short transcript).",
     )
+
+
+class SessionCreateRequest(BaseModel):
+    topic: str
+    questions: list[dict] | None = None
+
+
+class SessionCreateResponse(BaseModel):
+    id: str
+    topic: str
+    questions: list[dict]
+    status: str
+    created_at: str
+
+
+class SessionDetailResponse(BaseModel):
+    session: dict
+    responses: list[dict]

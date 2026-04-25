@@ -45,6 +45,14 @@ class ASRTranscriber:
 
     def transcribe(self, audio: np.ndarray, sampling_rate: int) -> TranscriptResult:
         audio = np.asarray(audio, dtype=np.float32)
+        target_sr = 16000
+        if int(sampling_rate) != target_sr:
+            # Avoid torchaudio dependency inside Transformers by resampling ourselves.
+            # librosa is already in requirements.txt.
+            import librosa
+
+            audio = librosa.resample(audio, orig_sr=int(sampling_rate), target_sr=target_sr).astype(np.float32)
+            sampling_rate = target_sr
         try:
             out = self._pipe(
                 {"array": audio, "sampling_rate": sampling_rate},

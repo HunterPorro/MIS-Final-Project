@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MockInterviewResponse, Topic } from "@/lib/types";
 import { apiFetch, apiUrl } from "@/lib/api";
+import { captureVideoJpegFile } from "@/lib/gazeFrames";
+import { waitForVideoDimensions } from "@/lib/video";
 import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
 
 type ApiHealth = {
@@ -356,26 +358,17 @@ export function AssessForm() {
     setAudioBlob(wav);
   };
 
-  const captureFrame = () => {
+  const captureFrame = async () => {
     const video = videoRef.current;
     if (!video) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const file = new File([blob], "webcam-snapshot.jpg", { type: "image/jpeg" });
-        setSnapshotFile(file);
-        setPreviewUrl(URL.createObjectURL(blob));
-        stopCamera();
-      },
-      "image/jpeg",
-      0.92,
-    );
+    const ready = await waitForVideoDimensions(video, 8000);
+    if (!ready) return;
+    const file = await captureVideoJpegFile(video, 0.82);
+    if (!file) return;
+    const snap = new File([file], "webcam-snapshot.jpg", { type: "image/jpeg" });
+    setSnapshotFile(snap);
+    setPreviewUrl(URL.createObjectURL(snap));
+    stopCamera();
   };
 
   const onPickFile = (f: File | null) => {
@@ -742,7 +735,10 @@ export function AssessForm() {
               role="status"
               aria-live="polite"
             >
-              <AnalysisProgress variant="assess" />
+              <AnalysisProgress
+                variant="assess"
+                helpText="Large images upload faster when captured from the downsized preview. First model load may take extra time."
+              />
             </div>
           )}
         </section>

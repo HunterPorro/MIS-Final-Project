@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { MockInterviewResponse, Topic } from "@/lib/types";
+import type { MockInterviewResponse, SessionCreateResponse, Topic } from "@/lib/types";
 import { apiFetch, apiUrl } from "@/lib/api";
 import { waitForVideoDimensions } from "@/lib/video";
 import { buildSuperdaySession, type InterviewQuestion } from "@/components/interview/QuestionBank";
 import { computeMicLevel, createMicBuffers, emaNext, type MicAnalysisBuffers } from "@/lib/micLevel";
 import { captureVideoJpegFile } from "@/lib/gazeFrames";
 import { AnalysisProgress } from "@/components/ui/AnalysisProgress";
+import { AnalysisTimingChips } from "@/components/ui/AnalysisTimingChips";
 
 const SUPERDAY_MAX_SECONDS = 90;
 
@@ -158,6 +159,7 @@ function uniq<T>(xs: T[]): T[] {
 
 export function SessionInterview() {
   const [sessionQuestions, setSessionQuestions] = useState<InterviewQuestion[]>(() => buildSuperdaySession());
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const [idx, setIdx] = useState(0);
   const q = sessionQuestions[idx];
@@ -191,6 +193,39 @@ export function SessionInterview() {
   const [warmupNote, setWarmupNote] = useState<string | null>(null);
   const [awaitingNext, setAwaitingNext] = useState(false);
   const done = reports.length === sessionQuestions.length;
+
+  useEffect(() => {
+    let cancelled = false;
+    const create = async () => {
+      setSessionId(null);
+      try {
+        const res = await apiFetch(apiUrl("/sessions"), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            topic,
+            questions: sessionQuestions.map((qq) => ({
+              id: qq.id,
+              track: qq.track,
+              title: qq.title,
+              topicHint: qq.topicHint ?? null,
+              suggestedSeconds: qq.suggestedSeconds,
+            })),
+          }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as SessionCreateResponse;
+        if (cancelled) return;
+        setSessionId(data.id);
+      } catch {
+        // Persistence is optional; ignore failures.
+      }
+    };
+    create();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionQuestions, topic]);
 
   const downloadJson = useCallback((filename: string, value: unknown) => {
     const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
@@ -251,12 +286,12 @@ export function SessionInterview() {
     const v = videoRef.current;
     if (!v) return;
     const snap = async () => {
-      if (gazeFramesRef.current.length >= 6) return;
+      if (gazeFramesRef.current.length >= 5) return;
       const f = await captureVideoJpegFile(v);
       if (f) gazeFramesRef.current.push(f);
     };
     void snap();
-    gazeIntervalRef.current = window.setInterval(() => void snap(), 2400);
+    gazeIntervalRef.current = window.setInterval(() => void snap(), 2000);
     return () => {
       if (gazeIntervalRef.current !== undefined) window.clearInterval(gazeIntervalRef.current);
       gazeIntervalRef.current = undefined;
@@ -283,27 +318,18 @@ export function SessionInterview() {
       setError("Camera preview is not ready yet. Wait a moment, then try Capture again.");
       return;
     }
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        setSnapshotFile(new File([blob], "environment.jpg", { type: "image/jpeg" }));
-      },
-      "image/jpeg",
-      0.92,
-    );
+    const file = await captureVideoJpegFile(video, 0.82);
+    if (file) setSnapshotFile(new File([file], "environment.jpg", { type: "image/jpeg" }));
   };
 
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       try {
-        const res = await apiFetch(apiUrl("/health"), { method: "GET" });
+        const ctrl = new AbortController();
+        const t = window.setTimeout(() => ctrl.abort(), 8000);
+        const res = await apiFetch(apiUrl("/health"), { method: "GET", signal: ctrl.signal });
+        window.clearTimeout(t);
         if (cancelled) return;
         setApiOk(res.ok);
       } catch {
@@ -459,11 +485,12 @@ export function SessionInterview() {
       fd.append("topic", topic);
       fd.append("question_id", q.id);
       fd.append("question_track", q.track);
+      if (sessionId) fd.append("session_id", sessionId);
       fd.append("audio_wav", new File([audioBlob], `${q.id}.wav`, { type: "audio/wav" }));
       if (snapshotFile) fd.append("image", snapshotFile);
       for (const gf of gazeFramesRef.current) fd.append("gaze_frames", gf);
       const ctrl = new AbortController();
-      const t = window.setTimeout(() => ctrl.abort(), 240_000);
+      const t = window.setTimeout(() => ctrl.abort(), 360_000);
       const res = await apiFetch(apiUrl("/mock-interview"), { method: "POST", body: fd, signal: ctrl.signal });
       window.clearTimeout(t);
       if (!res.ok) throw new Error(await parseError(res));
@@ -492,7 +519,7 @@ export function SessionInterview() {
     } finally {
       setSubmitting(false);
     }
-  }, [audioBlob, q, reports.length, sessionQuestions.length, snapshotFile, topic]);
+  }, [audioBlob, q, reports.length, sessionId, sessionQuestions.length, snapshotFile, topic]);
 
   const runWarmupSelfTest = useCallback(async () => {
     setWarmupStatus("running");
@@ -545,6 +572,7 @@ export function SessionInterview() {
     setPreviewUrl(null);
     setSnapshotFile(null);
     setSessionQuestions(buildSuperdaySession());
+    setSessionId(null);
     setIdx(0);
     setReports([]);
     setAwaitingNext(false);
@@ -743,7 +771,11 @@ export function SessionInterview() {
                   <span className="evaluate-ring-2" />
                 </div>
                 <p className="text-sm font-semibold tracking-tight text-zinc-50">Saving and scoring</p>
-                <AnalysisProgress variant="session" className="mx-auto" />
+                <AnalysisProgress
+                  variant="session"
+                  className="mx-auto"
+                  helpText="First run can be slower while models load. Keep answers focused for faster scoring."
+                />
                 <p className="max-w-[260px] text-xs leading-relaxed text-zinc-500">
                   Feedback unlocks when you complete the full session.
                 </p>
@@ -901,6 +933,7 @@ export function SessionInterview() {
                     <div className="mt-1 text-sm font-semibold leading-snug text-zinc-100">{sq?.title ?? "—"}</div>
                     <div className="mt-3 text-2xl font-semibold tabular-nums text-white">{r.fit.fit_score}</div>
                     <div className="mt-1 text-xs text-zinc-500">Fit score</div>
+                    {r.timings_ms ? <AnalysisTimingChips timings={r.timings_ms} /> : null}
                   </div>
                 );
               })}

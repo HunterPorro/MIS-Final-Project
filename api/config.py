@@ -13,15 +13,27 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
 
+    # Optional Google Gemini (recommendations)
+    google_api_key: str | None = None
+    google_model: str = "gemini-1.5-flash"
+    google_timeout_s: int = 20
+
+    # Persistence (optional)
+    database_url: str | None = None
+
     # ASR: default to tiny for local dev responsiveness. For higher accuracy, set env ASR_MODEL=openai/whisper-base.
     asr_model: str = "openai/whisper-tiny"
     preload_asr: bool = True
-    max_asr_seconds: int = 60
-    asr_chunk_length_s: int = 20
-    asr_stride_length_s: int = 5
+    # Keep ASR time-bounded for responsive UX on CPU.
+    max_asr_seconds: int = 40
+    asr_chunk_length_s: int = 15
+    asr_stride_length_s: int = 4
 
     # Launch hardening
     environment: str = "dev"  # dev|prod
+    require_models: bool = False
+    request_timeout_s: int = 180
+    narrative_timeout_s: int = 45
     admin_key: str | None = None
     allow_transcript_override: bool = False
     dev_allow_transcript_override: bool = True

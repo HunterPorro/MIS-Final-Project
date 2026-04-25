@@ -34,6 +34,12 @@ pip install -r requirements.txt
 ./scripts/train_all.sh
 ```
 
+Verify expected artifacts exist:
+
+```bash
+npm run verify:models
+```
+
 Notes:
 
 - `training/generate_workspace_patterns.py` creates **synthetic** professional vs unprofessional images so the pipeline runs offline. Replace `training/data/workspace/` with your own `ImageFolder` for real webcams.
@@ -52,6 +58,10 @@ npm run dev
 
 This runs the API on port **8000** and the Next.js app on **3000** with `NEXT_PUBLIC_USE_PROXY=1` and `BACKEND_URL=http://127.0.0.1:8000` for the server-side proxy.
 
+If port **3000** is already in use, run `npm run dev:clean` then `npm run dev`.
+
+The site header includes an **API status bar** (mode, health, optional warmup) to debug connectivity quickly.
+
 **Option B — shell script (macOS/Linux)**
 
 ```bash
@@ -65,8 +75,10 @@ chmod +x scripts/dev.sh   # once
 
 ```bash
 export PYTHONPATH=.
-uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn api.main:app --host 127.0.0.1 --port 8000
 ```
+
+For API hot-reload (can be CPU-heavy on some machines), use `npm run dev:api:watch` from the repo root instead of `dev:api`.
 
 **Web**
 
@@ -115,6 +127,7 @@ API environment variables (see `api/.env.example`):
 - `ENABLE_RATE_LIMIT=true` and `RATE_LIMIT_PER_MINUTE=60` (basic in-memory IP limit)
 - `ALLOW_TRANSCRIPT_OVERRIDE=false` (dev-only test hook; can be enabled only with `ADMIN_KEY`)
 - `ADMIN_KEY=<secret>` (send as `X-Admin-Key` when using `transcript_override`)
+- `DATABASE_URL=postgresql://...` (optional; enables session/report persistence via `POST /sessions` and `GET /sessions/:id`)
 
 Observability:
 

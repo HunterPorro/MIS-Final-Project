@@ -21,8 +21,9 @@ This app is **split by design**: **Next.js on Vercel** (UI + BFF proxy) and **Fa
 
 | Variable | Value | Notes |
 |----------|--------|--------|
-| `NEXT_PUBLIC_USE_PROXY` | `1` | Browser uses `/api/py/...` (same origin). |
-| `BACKEND_URL` | `https://your-api.onrender.com` | **Server-only.** Must be your **FastAPI** host, not Vercel. |
+| `NEXT_PUBLIC_USE_PROXY` | `0` | Recommended for production so large WAV uploads go directly to FastAPI (avoid Vercel ~4.5MB proxy limit). |
+| `NEXT_PUBLIC_API_URL` | `https://your-api.onrender.com` | Public FastAPI base URL used by the browser when `NEXT_PUBLIC_USE_PROXY=0`. |
+| `BACKEND_URL` | `https://your-api.onrender.com` | **Server-only.** Used only when `NEXT_PUBLIC_USE_PROXY=1`. Must be your **FastAPI** host, not Vercel. |
 | `NEXT_PUBLIC_SITE_URL` | `https://your-app.vercel.app` | Sitemap / OG; use the real custom domain when you have one. |
 
 5. **Request size / duration (important)**  
@@ -40,10 +41,12 @@ This app is **split by design**: **Next.js on Vercel** (UI + BFF proxy) and **Fa
 | Variable | Example |
 |----------|---------|
 | `ENVIRONMENT` | `prod` |
+| `REQUIRE_MODELS` | `true` |
 | `CORS_ORIGINS` | `https://your-app.vercel.app,https://your-custom-domain.com` |
 | `ENABLE_RATE_LIMIT` | `true` |
 | `RATE_LIMIT_PER_MINUTE` | `60` |
 | `ALLOW_TRANSCRIPT_OVERRIDE` | `false` in prod |
+| `DATABASE_URL` | `postgresql://...` (optional; enables `/sessions`) |
 | `OPENAI_API_KEY` | Optional — narrative polish |
 | `ADMIN_KEY` | Optional — only if you enable admin-only overrides |
 
@@ -76,8 +79,28 @@ Optional: `SMOKE_TEST_ASR=1` loads Whisper (slow, downloads weights).
 ## Final sprint order (suggested)
 
 1. Deploy API with models; confirm `/health` ⇒ `ready: true`.
-2. Deploy Vercel with `NEXT_PUBLIC_USE_PROXY=1` and `BACKEND_URL` set.
-3. Run one real mock interview on production URL.
-4. If uploads fail, switch to direct API + CORS or reduce audio size.
-5. Set `NEXT_PUBLIC_SITE_URL` and custom domain when ready.
-6. Enable rate limits and keep `ALLOW_TRANSCRIPT_OVERRIDE=false` in prod.
+2. Deploy Vercel with **`NEXT_PUBLIC_USE_PROXY=0`**, **`NEXT_PUBLIC_API_URL=https://<api>`**, and API **`CORS_ORIGINS`** including your Vercel origin (recommended for large WAV uploads). Use proxy mode only if you keep interviews very short and small.
+3. Open the site and use the **API status bar** (Warmup) once after deploy or cold start.
+4. Run one real mock interview on the production URL; confirm timings feel acceptable.
+5. If uploads still fail, reduce recording length or verify `CORS_ORIGINS` matches the exact browser origin (scheme + host, no trailing slash mismatch).
+6. Set `NEXT_PUBLIC_SITE_URL` and custom domain when ready.
+7. Enable rate limits and keep `ALLOW_TRANSCRIPT_OVERRIDE=false` in prod.
+
+## Production verification checklist (speed + reliability)
+
+| Check | Pass criteria |
+|------|----------------|
+| API cold start | `GET /health` returns 200 and `ready: true` within a minute of wake |
+| Warmup | `POST /warmup` returns 200; repeat if first interview is slow |
+| Direct mode | Browser network tab shows `mock-interview` going to **API host**, not `/api/py` |
+| CORS | No browser console CORS errors on `mock-interview` |
+| Interview | Short answer (~20–40s audio) completes without client abort |
+| Video frames | Optional: camera on during record uploads small JPEGs; gaze section advisory only |
+
+### API tuning (optional)
+
+| Variable | Purpose |
+|----------|---------|
+| `REQUEST_TIMEOUT_S` | Upper bound for threaded ASR / technical / gaze stages (default 180) |
+| `NARRATIVE_TIMEOUT_S` | LLM narrative polish timeout in seconds (default 45) |
+| `MAX_ASR_SECONDS` | Cap audio fed to Whisper for responsiveness (see `api/config.py` / env `MAX_ASR_SECONDS` if exposed) |

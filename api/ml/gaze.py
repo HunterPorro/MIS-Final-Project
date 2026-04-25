@@ -8,6 +8,27 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+_face_cascade = None
+_eye_cascade = None
+
+
+def _get_face_cascade():
+    global _face_cascade
+    if _face_cascade is None:
+        import cv2
+
+        _face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    return _face_cascade
+
+
+def _get_eye_cascade():
+    global _eye_cascade
+    if _eye_cascade is None:
+        import cv2
+
+        _eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
+    return _eye_cascade
+
 
 @dataclass(frozen=True)
 class GazeResult:
@@ -27,15 +48,14 @@ def _pil_to_gray_bgr(img: Image.Image) -> tuple[np.ndarray, np.ndarray]:
 
 def _eye_x_norm(gray: np.ndarray, face_rect: tuple[int, int, int, int]) -> float | None:
     try:
-        import cv2
-    except ImportError:
+        eye_cascade = _get_eye_cascade()
+    except Exception:
         return None
 
     fx, fy, fw, fh = face_rect
     roi = gray[fy : fy + fh, fx : fx + fw]
     if roi.size == 0:
         return None
-    eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_eye.xml")
     eyes = eye_cascade.detectMultiScale(roi, scaleFactor=1.1, minNeighbors=4, minSize=(18, 18))
     if len(eyes) == 0:
         return None
@@ -73,7 +93,7 @@ def analyze_gaze_sequence(frames: list[Image.Image]) -> GazeResult:
             warning="Need at least 3 camera samples during recording for gaze heuristics.",
         )
 
-    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    face_cascade = _get_face_cascade()
     xs: list[float] = []
     ok = 0
     for im in frames[:8]:

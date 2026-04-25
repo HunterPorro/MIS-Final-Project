@@ -5,11 +5,14 @@
     "web"
   ],
   "scripts": {
-    "dev:api": "PYTHONPATH=. .venv/bin/python -m uvicorn api.main:app --reload --reload-exclude \".venv/*\" --reload-exclude \".venv/**\" --host 127.0.0.1 --port 8000",
+    "dev:api": "PYTHONPATH=. .venv/bin/python -m uvicorn api.main:app --host 127.0.0.1 --port 8000",
+    "dev:api:watch": "PYTHONPATH=. .venv/bin/python -m uvicorn api.main:app --reload --reload-dir api --reload-exclude \".venv/*\" --reload-exclude \".venv/**\" --host 127.0.0.1 --port 8000",
     "dev:web": "cross-env BACKEND_URL=http://127.0.0.1:8000 NEXT_PUBLIC_USE_PROXY=1 npm run dev --prefix web -- --hostname 127.0.0.1 --port 3000",
     "dev": "concurrently -k -n api,web -c blue,magenta \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:clean": "bash scripts/dev_clean.sh && npm run dev",
     "build": "npm run build --prefix web",
     "lint": "npm run lint --prefix web",
+    "verify:models": "bash scripts/verify_models.sh",
     "test:smoke": "bash scripts/smoke_test.sh"
   },
   "devDependencies": {

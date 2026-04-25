@@ -37,10 +37,15 @@ export type MockInterviewResponse = AssessResponse & {
   transcript: string;
   timings_ms?: Record<string, number> | null;
   analysis_meta?: Record<string, number | boolean | string> | null;
+  recommendations?: string[] | null;
   warnings?: string[] | null;
   behavioral: {
     score: number;
     star_coverage: Record<string, boolean>;
+    question_template?: string | null;
+    question_coverage?: Record<string, boolean> | null;
+    question_outline?: string[] | null;
+    top_fixes?: string[] | null;
     filler_words: Record<string, number>;
     filler_total: number;
     word_count: number;
@@ -75,4 +80,12 @@ export type MockInterviewResponse = AssessResponse & {
     frames_used?: number | null;
     warning?: string | null;
   } | null;
+};
+
+export type SessionCreateResponse = {
+  id: string;
+  topic: string;
+  questions: unknown[];
+  status: string;
+  created_at: string;
 };
