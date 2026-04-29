@@ -9,6 +9,12 @@ __pycache__/
 dist/
 build/
 
+# Backend secrets — never commit real .env files
+api/.env
+api/.env.*
+.env
+.env.*
+
 # ML artifacts (train to regenerate)
 # We commit ONLY the minimal runtime artifacts needed for production.
 # Large training checkpoints remain ignored to keep the repo lean.

@@ -7,6 +7,7 @@ services:
     plan: free
     healthCheckPath: /health
     envVars:
+      # ── Non-secret defaults ─────────────────────────────────────────────────
       - key: PYTHONUNBUFFERED
         value: "1"
       - key: ENVIRONMENT
@@ -21,8 +22,29 @@ services:
         value: "60"
       - key: ALLOW_TRANSCRIPT_OVERRIDE
         value: "false"
+      - key: ENABLE_DELIVERY_INSIGHTS
+        value: "false"
+      - key: REQUEST_TIMEOUT_S
+        value: "180"
+      - key: NARRATIVE_TIMEOUT_S
+        value: "45"
+      - key: ASR_MODEL
+        value: "openai/whisper-tiny"
+      - key: ASR_LANGUAGE
+        value: "en"
+      # ── CORS: replace with your real Vercel URL ─────────────────────────────
+      # Must include the exact origin the browser sends (scheme + host, no trailing slash).
+      # Example: https://your-app.vercel.app
+      # Add comma-separated entries if you have a custom domain too.
       - key: CORS_ORIGINS
         value: "https://YOUR-VERCEL-DOMAIN.vercel.app"
-      # Optional persistence (Supabase Postgres): set DATABASE_URL in Render dashboard (secret)
-      # Set GOOGLE_API_KEY / OPENAI_API_KEY / ADMIN_KEY in Render dashboard (secrets)
-
+      # ── Secrets: set these in the Render dashboard, not here ───────────────
+      # Dashboard → your service → Environment → Add Environment Variable
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_KEY
+        sync: false

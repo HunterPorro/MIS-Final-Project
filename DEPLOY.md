@@ -1,110 +1,168 @@
-# Launch sprint — deployment, testing, and production checklist
+# Deployment Guide
 
-This app is **split by design**: **Next.js on Vercel** (UI + BFF proxy) and **FastAPI elsewhere** (GPU/CPU ML, large models, long requests). Nothing here trains models; it ships what you already built.
+Split architecture: **FastAPI on Render** (ML, ASR, scoring) + **Next.js on Vercel** (UI).
 
-## Architecture (don’t fight it)
+## Architecture
 
-| Layer | Where | Role |
-|--------|--------|------|
-| Browser | Vercel | React UI, calls same-origin `/api/py/*` when `NEXT_PUBLIC_USE_PROXY=1` |
-| BFF | Vercel Route Handler | `web/src/app/api/py/[...path]/route.ts` forwards to `BACKEND_URL` |
-| API | Render / Railway / Fly / VM | Whisper, DistilBERT, CNN, rate limits, `/health` |
+| Layer | Platform | Role |
+|-------|----------|------|
+| Browser | Vercel | React UI, calls FastAPI directly (recommended) or via `/api/py` proxy |
+| BFF proxy | Vercel route handler | `web/src/app/api/py/[...path]/route.ts` — only used when `NEXT_PUBLIC_USE_PROXY=1` |
+| API | Render (Docker) | Whisper ASR, DistilBERT, CNN, rate limits, `/health` |
 
-**Do not** set `BACKEND_URL` to your own Vercel URL — the proxy detects that loop and returns 500.
+**Recommended production mode:** `NEXT_PUBLIC_USE_PROXY=0` + `NEXT_PUBLIC_API_URL=<render-url>`. The browser uploads directly to FastAPI, bypassing Vercel's ~4.5 MB proxy limit. You must then set `CORS_ORIGINS` on the API to include your Vercel domain.
 
-## Vercel (frontend)
+---
 
-1. **Import the Git repo** in Vercel.
-2. **Root Directory:** `web` (this monorepo’s Next app).
-3. **Framework:** Next.js (auto). The repo includes `web/vercel.json` so install runs from the monorepo root (`npm ci`).
-4. **Environment variables** (Production + Preview as needed):
+## Environment variable reference
 
-| Variable | Value | Notes |
-|----------|--------|--------|
-| `NEXT_PUBLIC_USE_PROXY` | `0` | Recommended for production so large WAV uploads go directly to FastAPI (avoid Vercel ~4.5MB proxy limit). |
-| `NEXT_PUBLIC_API_URL` | `https://your-api.onrender.com` | Public FastAPI base URL used by the browser when `NEXT_PUBLIC_USE_PROXY=0`. |
-| `BACKEND_URL` | `https://your-api.onrender.com` | **Server-only.** Used only when `NEXT_PUBLIC_USE_PROXY=1`. Must be your **FastAPI** host, not Vercel. |
-| `NEXT_PUBLIC_SITE_URL` | `https://your-app.vercel.app` | Sitemap / OG; use the real custom domain when you have one. |
+### Backend (Render)
 
-5. **Request size / duration (important)**  
-   - Vercel **Serverless** routes have a **~4.5 MB** request body limit on typical plans. Your API allows **25 MB** audio; **large WAV uploads through the proxy can fail** on Vercel. Mitigations:
-     - **A.** Keep interviews short and compress/export smaller WAVs client-side, **or**
-     - **B.** Set `NEXT_PUBLIC_USE_PROXY=0` and `NEXT_PUBLIC_API_URL=https://your-api...` so the **browser uploads directly to FastAPI** (then set `CORS_ORIGINS` on the API to include your Vercel origin).
-6. **Long runs:** ASR + NLP can exceed default function timeouts. The proxy route sets `maxDuration`; on **Hobby** plans Vercel may cap duration lower — upgrade or move heavy uploads to direct API mode (B above).
+| Variable | Required | Default | Notes |
+|----------|----------|---------|-------|
+| `CORS_ORIGINS` | **Yes** | `http://localhost:3000` | Comma-separated allowed origins. Must include your Vercel URL. |
+| `ENVIRONMENT` | Yes | `dev` | Set to `prod` on Render. |
+| `GOOGLE_API_KEY` | No | — | Gemini recommendations. Set as secret in dashboard. |
+| `OPENAI_API_KEY` | No | — | GPT narrative polish. Set as secret in dashboard. |
+| `DATABASE_URL` | No | — | Postgres (Supabase) — enables `/sessions`. Set as secret in dashboard. |
+| `ADMIN_KEY` | No | — | Enables deterministic transcript overrides (testing only). |
+| `REQUIRE_MODELS` | No | `false` | Set `true` to hard-fail if ML artifacts are missing. |
+| `PRELOAD_ASR` | No | `true` | Set `false` on free tier to avoid OOM at cold start. |
+| `ASR_MODEL` | No | `openai/whisper-tiny` | Use `openai/whisper-base` for higher accuracy. |
+| `ENABLE_RATE_LIMIT` | No | `true` | Keep `true` in production. |
+| `RATE_LIMIT_PER_MINUTE` | No | `60` | Requests per IP per minute. |
+| `ALLOW_TRANSCRIPT_OVERRIDE` | No | `false` | Keep `false` in production. |
+| `REQUEST_TIMEOUT_S` | No | `180` | Pipeline timeout in seconds. |
+| `NARRATIVE_TIMEOUT_S` | No | `45` | LLM narrative timeout. |
+| `ENABLE_DELIVERY_INSIGHTS` | No | `false` | Enable tone/prosody/gaze analysis. |
 
-## API host (Render / Railway / Fly / Docker)
+### Frontend (Vercel)
 
-1. **Build** from repo `Dockerfile` (includes `api/`). If `models/` isn’t present on the host/image, the API will boot in **degraded** mode and `/health` will show `ready: false`.
-2. **Start:** `uvicorn api.main:app --host 0.0.0.0 --port 8000` (already in Dockerfile `CMD`).
-3. **Environment:**
+| Variable | Required | Example | Notes |
+|----------|----------|---------|-------|
+| `NEXT_PUBLIC_API_URL` | **Yes** | `https://final-round-api.onrender.com` | Public FastAPI URL. Set after Render deploys. |
+| `NEXT_PUBLIC_USE_PROXY` | **Yes** | `0` | Use `0` (direct) for production. `1` routes through Vercel proxy. |
+| `BACKEND_URL` | If proxy=1 | `https://final-round-api.onrender.com` | Server-side FastAPI URL. Must NOT be a Vercel URL. |
+| `NEXT_PUBLIC_SITE_URL` | No | `https://your-app.vercel.app` | Used for sitemap and OG tags. |
 
-| Variable | Example |
-|----------|---------|
-| `ENVIRONMENT` | `prod` |
-| `REQUIRE_MODELS` | `true` (optional) |
-| `CORS_ORIGINS` | `https://your-app.vercel.app,https://your-custom-domain.com` |
-| `ENABLE_RATE_LIMIT` | `true` |
-| `RATE_LIMIT_PER_MINUTE` | `60` |
-| `ALLOW_TRANSCRIPT_OVERRIDE` | `false` in prod |
-| `DATABASE_URL` | `postgresql://...` (optional; enables `/sessions`) |
-| `OPENAI_API_KEY` | Optional — narrative polish |
-| `ADMIN_KEY` | Optional — only if you enable admin-only overrides |
+---
 
-4. **Health:** `GET /health` — `ready: true` only when workspace + technical artifacts exist.
-5. **Render:** Edit `render.yaml` `CORS_ORIGINS` and connect the repo; set secrets in the dashboard.
+## Step 1 — Deploy to Render
 
-Notes:
+1. Go to [render.com](https://render.com) → **New** → **Web Service**.
+2. Connect your GitHub repo.
+3. **Name:** `final-round-api` (or whatever you prefer).
+4. **Branch:** `main`.
+5. **Environment:** Docker (Render auto-detects the `Dockerfile`).
+6. **Plan:** Free (or Starter for always-on).
+7. Click **Create Web Service** — Render will start the first build. While it builds, proceed to step 8.
+8. Go to your service → **Environment** tab → **Add Environment Variable** and paste these one by one:
 
-- Set `REQUIRE_MODELS=true` if you want the API to **fail fast** during startup when artifacts are missing (recommended once you’ve shipped `models/` into the container or mounted it).
+   **Non-secret defaults (already set via `render.yaml` — verify they're correct):**
+   | Key | Value |
+   |-----|-------|
+   | `ENVIRONMENT` | `prod` |
+   | `PRELOAD_ASR` | `false` |
+   | `REQUIRE_MODELS` | `false` |
+   | `ALLOW_TRANSCRIPT_OVERRIDE` | `false` |
+   | `ENABLE_RATE_LIMIT` | `true` |
+   | `CORS_ORIGINS` | `https://YOUR-VERCEL-DOMAIN.vercel.app` ← **update this once Vercel gives you a URL** |
 
-## Testing before you ship
+   **Secrets (paste values, mark as secret):**
+   | Key | Where to get the value |
+   |-----|------------------------|
+   | `GOOGLE_API_KEY` | [Google AI Studio](https://aistudio.google.com/app/apikey) — needed for recommendations |
+   | `OPENAI_API_KEY` | [OpenAI platform](https://platform.openai.com/api-keys) — optional, for narrative polish |
+   | `DATABASE_URL` | Supabase project → Settings → Database → Connection string (URI format) — optional |
+   | `ADMIN_KEY` | Any random secret string — optional, only for testing |
 
-From repo root (with Python deps + Node deps installed):
+9. Click **Save Changes** → Render will redeploy with the new vars.
+10. Wait for the build to finish. Visit `https://<your-service>.onrender.com/health`.
+    - You should see `{"ok": true, "ready": true, ...}`.
+    - If `ready: false`, models may be missing — check the Render logs.
+11. **Copy your Render URL** (e.g. `https://final-round-api.onrender.com`). You'll need it for Vercel.
+
+---
+
+## Step 2 — Update CORS with your Vercel URL (after Vercel deploy)
+
+> Do this **after** you get a Vercel URL in Step 3.
+
+1. Render → your service → **Environment** → find `CORS_ORIGINS`.
+2. Replace the placeholder with your real Vercel URL:
+   ```
+   https://your-app.vercel.app
+   ```
+   If you have a custom domain too:
+   ```
+   https://your-app.vercel.app,https://your-custom-domain.com
+   ```
+3. **Save** → Render redeploys automatically (takes ~2–3 min on free tier).
+
+---
+
+## Step 3 — Deploy to Vercel
+
+1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import your GitHub repo.
+2. **Framework Preset:** Next.js (auto-detected).
+3. **Root Directory:** Click **Edit** and set it to `web`.
+4. **Build & Output Settings:** Leave as defaults — `web/vercel.json` handles them.
+5. **Environment Variables:** Add these before clicking Deploy:
+
+   | Key | Value |
+   |-----|-------|
+   | `NEXT_PUBLIC_USE_PROXY` | `0` |
+   | `NEXT_PUBLIC_API_URL` | `https://your-api.onrender.com` ← your Render URL from Step 1 |
+   | `NEXT_PUBLIC_SITE_URL` | `https://your-app.vercel.app` ← Vercel will show you this URL after first deploy; update it if needed |
+
+   > If you want proxy mode instead (only for short/small recordings): set `NEXT_PUBLIC_USE_PROXY=1` and add `BACKEND_URL=https://your-api.onrender.com`. Note the Vercel Hobby plan has a ~4.5 MB request body limit on serverless routes.
+
+6. Click **Deploy**. Vercel builds and gives you a URL (e.g. `https://final-round-xyz.vercel.app`).
+7. Copy that URL and go back to Render to update `CORS_ORIGINS` (Step 2 above).
+
+---
+
+## Step 4 — Verify end-to-end
+
+1. Open your Vercel URL.
+2. The **API status bar** at the top of the page should show **Ready** (green) within a few seconds.
+   - If it shows **Down**, check: Is the Render service awake? Does `NEXT_PUBLIC_API_URL` match exactly?
+   - Free tier Render services sleep after 15 min of inactivity — click **Warmup** to wake it.
+3. Click **Warmup** once to pre-load ASR/ML models. Wait for the ms counter to appear.
+4. Run a short mock interview (~20–40s recording). Confirm the results page loads with scores.
+5. Check browser DevTools → Network tab → the `mock-interview` request should go to your **Render URL** (not `/api/py`).
+6. Check browser console — no CORS errors.
+
+---
+
+## Debugging
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| API status bar shows **Down** | Render service sleeping or `NEXT_PUBLIC_API_URL` wrong | Click Warmup; verify env var exact match |
+| CORS error in browser console | `CORS_ORIGINS` on API doesn't include Vercel origin | Update `CORS_ORIGINS` on Render and redeploy |
+| `502` from `/api/py` | Proxy enabled but `BACKEND_URL` wrong, or request too large | Switch to direct mode (`NEXT_PUBLIC_USE_PROXY=0`) |
+| Vercel Security Checkpoint JSON | `BACKEND_URL` points at a Vercel URL | Set `BACKEND_URL` to the Render URL |
+| `ready: false` at `/health` | Models missing in Docker image | Check Render logs; `models/` must be in the image |
+| Interview hangs / 503 | Models loading slowly (first request) | Click Warmup first; upgrade Render plan for always-on |
+| Upload fails for long recordings | Vercel proxy body limit (~4.5 MB) | Use direct mode (`NEXT_PUBLIC_USE_PROXY=0`) |
+
+---
+
+## Local development
 
 ```bash
+# Install all deps (root + web)
 npm ci
+
+# Start API + web in parallel with hot-reload
+npm run dev
+
+# Smoke test (no Whisper load)
 npm run test:smoke
+
+# Smoke test with ASR (downloads weights, slow first run)
+SMOKE_TEST_ASR=1 npm run test:smoke
 ```
 
-Optional: `SMOKE_TEST_ASR=1` loads Whisper (slow, downloads weights).
-
-**Manual:** `npm run dev`, open `/interview`, record → Generate; open `/superday`, full flow; confirm API logs show `asr_done`, `technical_done`, `mock_interview_done`.
-
-## Debugging common production issues
-
-| Symptom | Likely cause |
-|---------|----------------|
-| UI shows API **Down** | `BACKEND_URL` wrong, API sleeping (Render free tier), or `/health` not reachable from Vercel server |
-| JSON error mentioning **Vercel Security Checkpoint** | `BACKEND_URL` pointed at a **Vercel** URL or blocked bot flow — use raw API host |
-| **502** from `/api/py/...` | API down, wrong URL, or request body too large for Vercel proxy |
-| **CORS** in browser (direct API mode) | Add your exact Vercel origin to `CORS_ORIGINS` on FastAPI |
-| **503** on interview | Models missing on API host |
-
-## Final sprint order (suggested)
-
-1. Deploy API with models; confirm `/health` ⇒ `ready: true`.
-2. Deploy Vercel with **`NEXT_PUBLIC_USE_PROXY=0`**, **`NEXT_PUBLIC_API_URL=https://<api>`**, and API **`CORS_ORIGINS`** including your Vercel origin (recommended for large WAV uploads). Use proxy mode only if you keep interviews very short and small.
-3. Open the site and use the **API status bar** (Warmup) once after deploy or cold start.
-4. Run one real mock interview on the production URL; confirm timings feel acceptable.
-5. If uploads still fail, reduce recording length or verify `CORS_ORIGINS` matches the exact browser origin (scheme + host, no trailing slash mismatch).
-6. Set `NEXT_PUBLIC_SITE_URL` and custom domain when ready.
-7. Enable rate limits and keep `ALLOW_TRANSCRIPT_OVERRIDE=false` in prod.
-
-## Production verification checklist (speed + reliability)
-
-| Check | Pass criteria |
-|------|----------------|
-| API cold start | `GET /health` returns 200 and `ready: true` within a minute of wake |
-| Warmup | `POST /warmup` returns 200; repeat if first interview is slow |
-| Direct mode | Browser network tab shows `mock-interview` going to **API host**, not `/api/py` |
-| CORS | No browser console CORS errors on `mock-interview` |
-| Interview | Short answer (~20–40s audio) completes without client abort |
-| Video frames | Optional: camera on during record uploads small JPEGs; gaze section advisory only |
-
-### API tuning (optional)
-
-| Variable | Purpose |
-|----------|---------|
-| `REQUEST_TIMEOUT_S` | Upper bound for threaded ASR / technical / gaze stages (default 180) |
-| `NARRATIVE_TIMEOUT_S` | LLM narrative polish timeout in seconds (default 45) |
-| `MAX_ASR_SECONDS` | Cap audio fed to Whisper for responsiveness (see `api/config.py` / env `MAX_ASR_SECONDS` if exposed) |
+The dev setup runs the proxy (`NEXT_PUBLIC_USE_PROXY=1`) automatically, so no CORS config is needed locally.
